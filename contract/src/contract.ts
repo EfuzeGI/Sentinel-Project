@@ -1,6 +1,7 @@
 // Sentinel - Multi-Vault Dead Man's Switch with Yield/Resume + Warning Protocol
+// Using simple key-value storage to avoid collection serialization issues
 
-import { NearBindgen, near, call, view, UnorderedMap } from "near-sdk-js";
+import { NearBindgen, near, call, view } from "near-sdk-js";
 
 const MS = 1_000_000n;
 const MIN_INTERVAL_MS = 60_000; // 1 minute
@@ -8,7 +9,9 @@ const DEFAULT_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const DEFAULT_GRACE_PERIOD_MS = 24 * 60 * 60 * 1000; // 24 hours
 const MIN_GRACE_PERIOD_MS = 60_000; // 1 minute
 
-// Vault data stored as JSON string in UnorderedMap<string>
+// Storage prefix for vault data
+const VAULT_PREFIX = "vault:";
+
 interface VaultData {
   owner_id: string;
   beneficiary_id: string;
@@ -21,35 +24,29 @@ interface VaultData {
   is_emergency: boolean;
 }
 
-function createVault(owner: string, beneficiary: string, intervalMs: number, gracePeriodMs: number): VaultData {
-  return {
-    owner_id: owner,
-    beneficiary_id: beneficiary,
-    vault_balance: "0",
-    heartbeat_interval_ms: String(intervalMs),
-    grace_period_ms: String(gracePeriodMs),
-    last_active_ns: near.blockTimestamp().toString(),
-    warning_triggered_at_ns: "0",
-    is_yielding: false,
-    is_emergency: false,
-  };
-}
-
 @NearBindgen({})
 export class SentinelRegistry {
-  // Store vaults as JSON strings to avoid serialization issues
-  vaults: UnorderedMap<string> = new UnorderedMap("v");
+  // Track all vault owners for iteration (optional)
+  vault_owners: string[] = [];
 
-  // Helper to get vault
+  // Helper to get vault using raw storage
   private getVault(accountId: string): VaultData | null {
-    const data = this.vaults.get(accountId);
+    const key = VAULT_PREFIX + accountId;
+    const data = near.storageReadUtf8(key);
     if (!data) return null;
     return JSON.parse(data) as VaultData;
   }
 
-  // Helper to save vault
+  // Helper to save vault using raw storage
   private saveVault(accountId: string, vault: VaultData): void {
-    this.vaults.set(accountId, JSON.stringify(vault));
+    const key = VAULT_PREFIX + accountId;
+    near.storageWriteUtf8(key, JSON.stringify(vault));
+  }
+
+  // Helper to remove vault
+  private removeVault(accountId: string): void {
+    const key = VAULT_PREFIX + accountId;
+    near.storageRemove(key);
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -80,8 +77,24 @@ export class SentinelRegistry {
       ? grace_period_ms
       : DEFAULT_GRACE_PERIOD_MS;
 
-    const vault = createVault(caller, beneficiary, actualInterval, actualGracePeriod);
+    const vault: VaultData = {
+      owner_id: caller,
+      beneficiary_id: beneficiary,
+      vault_balance: "0",
+      heartbeat_interval_ms: String(actualInterval),
+      grace_period_ms: String(actualGracePeriod),
+      last_active_ns: near.blockTimestamp().toString(),
+      warning_triggered_at_ns: "0",
+      is_yielding: false,
+      is_emergency: false,
+    };
+
     this.saveVault(caller, vault);
+
+    // Track owner
+    if (!this.vault_owners.includes(caller)) {
+      this.vault_owners.push(caller);
+    }
 
     near.log(`Vault created: ${caller} -> ${beneficiary}, interval: ${actualInterval}ms, grace: ${actualGracePeriod}ms`);
 
@@ -99,7 +112,7 @@ export class SentinelRegistry {
     if (!vault) throw new Error(`Vault not found for ${caller}. Call setup_vault first.`);
 
     vault.last_active_ns = near.blockTimestamp().toString();
-    vault.warning_triggered_at_ns = "0"; // Reset warning on ping
+    vault.warning_triggered_at_ns = "0";
 
     if (vault.is_yielding) {
       vault.is_yielding = false;
@@ -153,7 +166,6 @@ export class SentinelRegistry {
     vault.vault_balance = (currentBalance - withdrawAmount).toString();
     this.saveVault(caller, vault);
 
-    // Transfer
     const promise = near.promiseBatchCreate(caller);
     near.promiseBatchActionTransfer(promise, withdrawAmount);
 
@@ -219,21 +231,25 @@ export class SentinelRegistry {
 
     const balance = BigInt(vault.vault_balance);
 
-    // Return funds if any
     if (balance > 0n) {
       const promise = near.promiseBatchCreate(caller);
       near.promiseBatchActionTransfer(promise, balance);
     }
 
-    // Remove vault from registry
-    this.vaults.remove(caller);
+    this.removeVault(caller);
+
+    // Remove from owners list
+    const idx = this.vault_owners.indexOf(caller);
+    if (idx >= 0) {
+      this.vault_owners.splice(idx, 1);
+    }
 
     near.log(`Vault ${caller} deleted. Returned ${balance} yoctoNEAR`);
     return { returned_balance: balance.toString() };
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  //  Agent Actions (anyone can call, but operates on specific account)
+  //  Agent Actions
   // ═══════════════════════════════════════════════════════════════════
 
   @call({})
@@ -263,7 +279,6 @@ export class SentinelRegistry {
     vault.warning_triggered_at_ns = now.toString();
     this.saveVault(account_id, vault);
 
-    // Emit event for indexer
     near.log(`EVENT_JSON:{"event": "warning_sent", "data": {"owner": "${account_id}", "timestamp": "${now.toString()}"}}`);
     near.log(`WARNING: Heartbeat expired for ${account_id}. Grace period started.`);
 
@@ -286,33 +301,26 @@ export class SentinelRegistry {
     const interval = BigInt(vault.heartbeat_interval_ms) * MS;
     const deadline = lastActive + interval;
 
-    // Still alive
     if (now <= deadline) {
       return { status: "ALIVE", is_yielding: false, owner: account_id };
     }
 
-    // Expired but no warning sent yet
     if (vault.warning_triggered_at_ns === "0") {
       return { status: "WARNING_REQUIRED", is_yielding: false, owner: account_id };
     }
 
-    // Check grace period
     const warningTriggered = BigInt(vault.warning_triggered_at_ns);
     const gracePeriod = BigInt(vault.grace_period_ms) * MS;
     const warningDeadline = warningTriggered + gracePeriod;
 
     if (now < warningDeadline) {
-      const remaining = (warningDeadline - now) / MS;
-      near.log(`Warning active for ${account_id}. ${remaining}ms until execution eligible.`);
       return { status: "WARNING_GRACE_PERIOD", is_yielding: false, owner: account_id };
     }
 
-    // Already yielding
     if (vault.is_yielding) {
       return { status: "YIELD_PENDING", is_yielding: true, owner: account_id };
     }
 
-    // Initiate yield
     vault.is_yielding = true;
     this.saveVault(account_id, vault);
 
@@ -344,7 +352,6 @@ export class SentinelRegistry {
       return { status: "RESUMED_ALIVE", transferred: "0", owner: account_id };
     }
 
-    // Confirm death - transfer to beneficiary
     vault.is_emergency = true;
     const balance = BigInt(vault.vault_balance);
 
@@ -429,11 +436,11 @@ export class SentinelRegistry {
 
   @view({})
   get_all_vaults(): string[] {
-    return this.vaults.toArray().map(([key]) => key);
+    return this.vault_owners;
   }
 
   @view({})
   get_vault_count(): number {
-    return this.vaults.length;
+    return this.vault_owners.length;
   }
 }
