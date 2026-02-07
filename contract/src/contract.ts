@@ -32,7 +32,7 @@ export class SentinelRegistry {
   // Helper to get vault using raw storage
   private getVault(accountId: string): VaultData | null {
     const key = VAULT_PREFIX + accountId;
-    const data = near.storageReadUtf8(key);
+    const data = near.storageRead(key);
     if (!data) return null;
     return JSON.parse(data) as VaultData;
   }
@@ -40,7 +40,7 @@ export class SentinelRegistry {
   // Helper to save vault using raw storage
   private saveVault(accountId: string, vault: VaultData): void {
     const key = VAULT_PREFIX + accountId;
-    near.storageWriteUtf8(key, JSON.stringify(vault));
+    near.storageWrite(key, JSON.stringify(vault));
   }
 
   // Helper to remove vault
