@@ -1,6 +1,6 @@
 // Sentinel - Multi-Vault Dead Man's Switch with Yield/Resume + Warning Protocol
 
-import { NearBindgen, near, call, view, UnorderedMap, NearPromise } from "near-sdk-js";
+import { NearBindgen, near, call, view, UnorderedMap } from "near-sdk-js";
 
 const MS = 1_000_000n;
 const MIN_INTERVAL_MS = 60_000; // 1 minute
@@ -8,34 +8,49 @@ const DEFAULT_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const DEFAULT_GRACE_PERIOD_MS = 24 * 60 * 60 * 1000; // 24 hours
 const MIN_GRACE_PERIOD_MS = 60_000; // 1 minute
 
-// Vault class - stores all state for a single user's vault
-class Vault {
+// Vault data stored as JSON string in UnorderedMap<string>
+interface VaultData {
   owner_id: string;
   beneficiary_id: string;
-  vault_balance: string; // stored as string for JSON serialization
+  vault_balance: string;
   heartbeat_interval_ms: string;
   grace_period_ms: string;
-  last_active_ns: string; // nanoseconds as string
+  last_active_ns: string;
   warning_triggered_at_ns: string;
   is_yielding: boolean;
   is_emergency: boolean;
+}
 
-  constructor() {
-    this.owner_id = "";
-    this.beneficiary_id = "";
-    this.vault_balance = "0";
-    this.heartbeat_interval_ms = "0";
-    this.grace_period_ms = String(DEFAULT_GRACE_PERIOD_MS);
-    this.last_active_ns = "0";
-    this.warning_triggered_at_ns = "0";
-    this.is_yielding = false;
-    this.is_emergency = false;
-  }
+function createVault(owner: string, beneficiary: string, intervalMs: number, gracePeriodMs: number): VaultData {
+  return {
+    owner_id: owner,
+    beneficiary_id: beneficiary,
+    vault_balance: "0",
+    heartbeat_interval_ms: String(intervalMs),
+    grace_period_ms: String(gracePeriodMs),
+    last_active_ns: near.blockTimestamp().toString(),
+    warning_triggered_at_ns: "0",
+    is_yielding: false,
+    is_emergency: false,
+  };
 }
 
 @NearBindgen({})
 export class SentinelRegistry {
-  vaults: UnorderedMap<Vault> = new UnorderedMap("v");
+  // Store vaults as JSON strings to avoid serialization issues
+  vaults: UnorderedMap<string> = new UnorderedMap("v");
+
+  // Helper to get vault
+  private getVault(accountId: string): VaultData | null {
+    const data = this.vaults.get(accountId);
+    if (!data) return null;
+    return JSON.parse(data) as VaultData;
+  }
+
+  // Helper to save vault
+  private saveVault(accountId: string, vault: VaultData): void {
+    this.vaults.set(accountId, JSON.stringify(vault));
+  }
 
   // ═══════════════════════════════════════════════════════════════════
   //  Vault Setup
@@ -50,7 +65,7 @@ export class SentinelRegistry {
     const caller = near.predecessorAccountId();
 
     // Check if vault already exists
-    const existing = this.vaults.get(caller);
+    const existing = this.getVault(caller);
     if (existing) {
       throw new Error("Vault already exists. Use reset_vault to delete first.");
     }
@@ -65,18 +80,8 @@ export class SentinelRegistry {
       ? grace_period_ms
       : DEFAULT_GRACE_PERIOD_MS;
 
-    const vault = new Vault();
-    vault.owner_id = caller;
-    vault.beneficiary_id = beneficiary;
-    vault.heartbeat_interval_ms = String(actualInterval);
-    vault.grace_period_ms = String(actualGracePeriod);
-    vault.last_active_ns = near.blockTimestamp().toString();
-    vault.warning_triggered_at_ns = "0";
-    vault.is_yielding = false;
-    vault.is_emergency = false;
-    vault.vault_balance = "0";
-
-    this.vaults.set(caller, vault);
+    const vault = createVault(caller, beneficiary, actualInterval, actualGracePeriod);
+    this.saveVault(caller, vault);
 
     near.log(`Vault created: ${caller} -> ${beneficiary}, interval: ${actualInterval}ms, grace: ${actualGracePeriod}ms`);
 
@@ -90,7 +95,8 @@ export class SentinelRegistry {
   @call({})
   ping(): { success: boolean; message: string } {
     const caller = near.predecessorAccountId();
-    const vault = this._getVaultOrThrow(caller);
+    const vault = this.getVault(caller);
+    if (!vault) throw new Error(`Vault not found for ${caller}. Call setup_vault first.`);
 
     vault.last_active_ns = near.blockTimestamp().toString();
     vault.warning_triggered_at_ns = "0"; // Reset warning on ping
@@ -104,7 +110,7 @@ export class SentinelRegistry {
       near.log("Emergency cancelled");
     }
 
-    this.vaults.set(caller, vault);
+    this.saveVault(caller, vault);
     near.log(`Heartbeat confirmed for ${caller}`);
 
     return { success: true, message: "Heartbeat confirmed" };
@@ -113,7 +119,8 @@ export class SentinelRegistry {
   @call({ payableFunction: true })
   deposit(): { new_balance: string } {
     const caller = near.predecessorAccountId();
-    const vault = this._getVaultOrThrow(caller);
+    const vault = this.getVault(caller);
+    if (!vault) throw new Error(`Vault not found for ${caller}. Call setup_vault first.`);
 
     const amount = near.attachedDeposit();
     if (amount <= 0n) throw new Error("Deposit amount required");
@@ -121,7 +128,7 @@ export class SentinelRegistry {
     const currentBalance = BigInt(vault.vault_balance);
     vault.vault_balance = (currentBalance + amount).toString();
 
-    this.vaults.set(caller, vault);
+    this.saveVault(caller, vault);
     near.log(`Deposit: ${amount} yoctoNEAR. New balance: ${vault.vault_balance}`);
 
     return { new_balance: vault.vault_balance };
@@ -130,7 +137,8 @@ export class SentinelRegistry {
   @call({})
   withdraw({ amount }: { amount?: string }): { withdrawn: string; remaining: string } {
     const caller = near.predecessorAccountId();
-    const vault = this._getVaultOrThrow(caller);
+    const vault = this.getVault(caller);
+    if (!vault) throw new Error(`Vault not found for ${caller}. Call setup_vault first.`);
 
     if (vault.is_emergency || vault.is_yielding) {
       throw new Error("Vault is locked during emergency/yield state");
@@ -143,7 +151,7 @@ export class SentinelRegistry {
     if (withdrawAmount > currentBalance) throw new Error("Insufficient balance");
 
     vault.vault_balance = (currentBalance - withdrawAmount).toString();
-    this.vaults.set(caller, vault);
+    this.saveVault(caller, vault);
 
     // Transfer
     const promise = near.promiseBatchCreate(caller);
@@ -157,12 +165,13 @@ export class SentinelRegistry {
   @call({})
   update_beneficiary({ new_beneficiary }: { new_beneficiary: string }): { success: boolean } {
     const caller = near.predecessorAccountId();
-    const vault = this._getVaultOrThrow(caller);
+    const vault = this.getVault(caller);
+    if (!vault) throw new Error(`Vault not found for ${caller}. Call setup_vault first.`);
 
     if (!new_beneficiary?.length) throw new Error("Beneficiary required");
 
     vault.beneficiary_id = new_beneficiary;
-    this.vaults.set(caller, vault);
+    this.saveVault(caller, vault);
 
     near.log(`Beneficiary updated to ${new_beneficiary} for vault ${caller}`);
     return { success: true };
@@ -171,14 +180,15 @@ export class SentinelRegistry {
   @call({})
   update_interval({ new_interval_ms }: { new_interval_ms: number }): { success: boolean } {
     const caller = near.predecessorAccountId();
-    const vault = this._getVaultOrThrow(caller);
+    const vault = this.getVault(caller);
+    if (!vault) throw new Error(`Vault not found for ${caller}. Call setup_vault first.`);
 
     if (new_interval_ms < MIN_INTERVAL_MS) {
       throw new Error(`Interval must be >= ${MIN_INTERVAL_MS}ms`);
     }
 
     vault.heartbeat_interval_ms = String(new_interval_ms);
-    this.vaults.set(caller, vault);
+    this.saveVault(caller, vault);
 
     near.log(`Interval updated to ${new_interval_ms}ms for vault ${caller}`);
     return { success: true };
@@ -187,14 +197,15 @@ export class SentinelRegistry {
   @call({})
   update_grace_period({ new_grace_period_ms }: { new_grace_period_ms: number }): { success: boolean } {
     const caller = near.predecessorAccountId();
-    const vault = this._getVaultOrThrow(caller);
+    const vault = this.getVault(caller);
+    if (!vault) throw new Error(`Vault not found for ${caller}. Call setup_vault first.`);
 
     if (new_grace_period_ms < MIN_GRACE_PERIOD_MS) {
       throw new Error(`Grace period must be >= ${MIN_GRACE_PERIOD_MS}ms`);
     }
 
     vault.grace_period_ms = String(new_grace_period_ms);
-    this.vaults.set(caller, vault);
+    this.saveVault(caller, vault);
 
     near.log(`Grace period updated to ${new_grace_period_ms}ms for vault ${caller}`);
     return { success: true };
@@ -203,7 +214,8 @@ export class SentinelRegistry {
   @call({})
   reset_vault(): { returned_balance: string } {
     const caller = near.predecessorAccountId();
-    const vault = this._getVaultOrThrow(caller);
+    const vault = this.getVault(caller);
+    if (!vault) throw new Error(`Vault not found for ${caller}. Call setup_vault first.`);
 
     const balance = BigInt(vault.vault_balance);
 
@@ -230,7 +242,7 @@ export class SentinelRegistry {
     warning_sent: boolean;
     owner: string;
   } {
-    const vault = this.vaults.get(account_id);
+    const vault = this.getVault(account_id);
     if (!vault) {
       return { status: "VAULT_NOT_FOUND", warning_sent: false, owner: account_id };
     }
@@ -249,7 +261,7 @@ export class SentinelRegistry {
     }
 
     vault.warning_triggered_at_ns = now.toString();
-    this.vaults.set(account_id, vault);
+    this.saveVault(account_id, vault);
 
     // Emit event for indexer
     near.log(`EVENT_JSON:{"event": "warning_sent", "data": {"owner": "${account_id}", "timestamp": "${now.toString()}"}}`);
@@ -264,7 +276,7 @@ export class SentinelRegistry {
     is_yielding: boolean;
     owner: string;
   } {
-    const vault = this.vaults.get(account_id);
+    const vault = this.getVault(account_id);
     if (!vault) {
       return { status: "VAULT_NOT_FOUND", is_yielding: false, owner: account_id };
     }
@@ -302,7 +314,7 @@ export class SentinelRegistry {
 
     // Initiate yield
     vault.is_yielding = true;
-    this.vaults.set(account_id, vault);
+    this.saveVault(account_id, vault);
 
     near.log(`YIELD: Grace period expired for ${account_id}. Waiting for agent verification.`);
     return { status: "YIELD_INITIATED", is_yielding: true, owner: account_id };
@@ -314,7 +326,7 @@ export class SentinelRegistry {
     transferred: string;
     owner: string;
   } {
-    const vault = this.vaults.get(account_id);
+    const vault = this.getVault(account_id);
     if (!vault) {
       return { status: "VAULT_NOT_FOUND", transferred: "0", owner: account_id };
     }
@@ -327,7 +339,7 @@ export class SentinelRegistry {
 
     if (!confirm_death) {
       vault.warning_triggered_at_ns = "0";
-      this.vaults.set(account_id, vault);
+      this.saveVault(account_id, vault);
       near.log(`RESUME: Owner ${account_id} verified alive. Yield cancelled.`);
       return { status: "RESUMED_ALIVE", transferred: "0", owner: account_id };
     }
@@ -345,7 +357,7 @@ export class SentinelRegistry {
       near.log(`TRANSFER: ${balance} yoctoNEAR -> ${vault.beneficiary_id}`);
     }
 
-    this.vaults.set(account_id, vault);
+    this.saveVault(account_id, vault);
     return { status: "TRANSFER_COMPLETE", transferred: balance.toString(), owner: account_id };
   }
 
@@ -370,7 +382,7 @@ export class SentinelRegistry {
     is_yielding: boolean;
     is_emergency: boolean;
   } | null {
-    const vault = this.vaults.get(account_id);
+    const vault = this.getVault(account_id);
 
     if (!vault) {
       return null;
@@ -417,23 +429,11 @@ export class SentinelRegistry {
 
   @view({})
   get_all_vaults(): string[] {
-    return this.vaults.toArray().map(([key, _]) => key);
+    return this.vaults.toArray().map(([key]) => key);
   }
 
   @view({})
   get_vault_count(): number {
     return this.vaults.length;
-  }
-
-  // ═══════════════════════════════════════════════════════════════════
-  //  Private Helpers
-  // ═══════════════════════════════════════════════════════════════════
-
-  private _getVaultOrThrow(owner: string): Vault {
-    const vault = this.vaults.get(owner);
-    if (!vault) {
-      throw new Error(`Vault not found for ${owner}. Call setup_vault first.`);
-    }
-    return vault;
   }
 }
