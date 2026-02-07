@@ -1,0 +1,23 @@
+{
+    "name": "sentinel-contract",
+    "version": "1.0.0",
+    "description": "Dead Man's Switch Smart Contract for NEAR Protocol",
+    "main": "src/contract.ts",
+    "scripts": {
+        "build": "near-sdk-js build src/contract.ts build/sentinel_vault.wasm",
+        "deploy": "near deploy --accountId $CONTRACT_ID --wasmFile build/sentinel_vault.wasm"
+    },
+    "keywords": [
+        "near",
+        "blockchain",
+        "smart-contract"
+    ],
+    "author": "",
+    "license": "MIT",
+    "dependencies": {
+        "near-sdk-js": "^1.0.0"
+    },
+    "devDependencies": {
+        "typescript": "^5.0.0"
+    }
+}
