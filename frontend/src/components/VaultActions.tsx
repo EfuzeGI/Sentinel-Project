@@ -36,7 +36,7 @@ export function VaultActions() {
         ping,
         deposit,
         withdraw,
-        initVault,
+        setupVault,
         updateBeneficiary,
         updateInterval,
         updateGracePeriod,
@@ -220,7 +220,7 @@ export function VaultActions() {
                             const intervalMs = intervalUnit === "minutes"
                                 ? intervalValue * 60 * 1000  // Minutes to ms
                                 : intervalValue * 24 * 60 * 60 * 1000; // Days to ms
-                            await initVault(initBeneficiary, intervalMs);
+                            await setupVault(initBeneficiary, intervalMs);
                         })}
                         disabled={isLoading === "init" || !initBeneficiary}
                         className="w-full bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-black font-semibold"
