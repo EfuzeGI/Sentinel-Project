@@ -9,8 +9,9 @@ const DEFAULT_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const DEFAULT_GRACE_PERIOD_MS = 24 * 60 * 60 * 1000; // 24 hours
 const MIN_GRACE_PERIOD_MS = 60_000; // 1 minute
 
-// Storage prefix for vault data
+// Storage keys
 const VAULT_PREFIX = "vault:";
+const OWNERS_KEY = "owners";
 
 interface VaultData {
   owner_id: string;
@@ -26,8 +27,6 @@ interface VaultData {
 
 @NearBindgen({})
 export class SentinelRegistry {
-  // Track all vault owners for iteration (optional)
-  vault_owners: string[] = [];
 
   // Helper to get vault using raw storage
   private getVault(accountId: string): VaultData | null {
@@ -47,6 +46,18 @@ export class SentinelRegistry {
   private removeVault(accountId: string): void {
     const key = VAULT_PREFIX + accountId;
     near.storageRemove(key);
+  }
+
+  // Helper to get owners list
+  private getOwners(): string[] {
+    const data = near.storageRead(OWNERS_KEY);
+    if (!data) return [];
+    return JSON.parse(data) as string[];
+  }
+
+  // Helper to save owners list
+  private saveOwners(owners: string[]): void {
+    near.storageWrite(OWNERS_KEY, JSON.stringify(owners));
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -91,9 +102,11 @@ export class SentinelRegistry {
 
     this.saveVault(caller, vault);
 
-    // Track owner
-    if (!this.vault_owners.includes(caller)) {
-      this.vault_owners.push(caller);
+    // Track owner in storage
+    const owners = this.getOwners();
+    if (!owners.includes(caller)) {
+      owners.push(caller);
+      this.saveOwners(owners);
     }
 
     near.log(`Vault created: ${caller} -> ${beneficiary}, interval: ${actualInterval}ms, grace: ${actualGracePeriod}ms`);
@@ -239,9 +252,11 @@ export class SentinelRegistry {
     this.removeVault(caller);
 
     // Remove from owners list
-    const idx = this.vault_owners.indexOf(caller);
+    const owners = this.getOwners();
+    const idx = owners.indexOf(caller);
     if (idx >= 0) {
-      this.vault_owners.splice(idx, 1);
+      owners.splice(idx, 1);
+      this.saveOwners(owners);
     }
 
     near.log(`Vault ${caller} deleted. Returned ${balance} yoctoNEAR`);
@@ -436,11 +451,11 @@ export class SentinelRegistry {
 
   @view({})
   get_all_vaults(): string[] {
-    return this.vault_owners;
+    return this.getOwners();
   }
 
   @view({})
   get_vault_count(): number {
-    return this.vault_owners.length;
+    return this.getOwners().length;
   }
 }
