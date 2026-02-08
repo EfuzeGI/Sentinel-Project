@@ -116,6 +116,7 @@ export function VaultStatus() {
     const isExpired = vaultStatus.is_expired;
     const isEmergency = vaultStatus.is_emergency;
     const isWarningActive = vaultStatus.is_warning_active;
+    const isCompleted = vaultStatus.is_completed;
     const isExecutionReady = vaultStatus.is_execution_ready;
     const warningGraceMs = parseInt(vaultStatus.warning_grace_remaining_ms || "0");
 
@@ -131,11 +132,13 @@ export function VaultStatus() {
     return (
         <div className="grid gap-6">
             {/* Main Status Card */}
-            <Card className={`relative overflow-hidden backdrop-blur-xl ${isEmergency
-                ? "bg-gradient-to-br from-red-900/30 to-slate-900/30 border-red-500/30"
-                : isExpired
-                    ? "bg-gradient-to-br from-amber-900/30 to-slate-900/30 border-amber-500/30"
-                    : "bg-gradient-to-br from-emerald-900/20 to-slate-900/30 border-emerald-500/20"
+            <Card className={`relative overflow-hidden backdrop-blur-xl ${isCompleted
+                ? "bg-gradient-to-br from-slate-800/30 to-slate-900/30 border-slate-600/30"
+                : isEmergency
+                    ? "bg-gradient-to-br from-red-900/30 to-slate-900/30 border-red-500/30"
+                    : isExpired
+                        ? "bg-gradient-to-br from-amber-900/30 to-slate-900/30 border-amber-500/30"
+                        : "bg-gradient-to-br from-emerald-900/20 to-slate-900/30 border-emerald-500/20"
                 }`}>
                 {/* Animated background */}
                 <div className="absolute inset-0 overflow-hidden">
@@ -162,13 +165,15 @@ export function VaultStatus() {
                                 {isOwner ? "Your vault" : "Viewing vault status"}
                             </CardDescription>
                         </div>
-                        <Badge className={`text-sm px-4 py-2 ${isEmergency
-                            ? "bg-red-500/20 text-red-400 border-red-500/30"
-                            : isExpired
-                                ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
-                                : "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                        <Badge className={`text-sm px-4 py-2 ${isCompleted
+                            ? "bg-slate-600/20 text-slate-300 border-slate-500/30"
+                            : isEmergency
+                                ? "bg-red-500/20 text-red-400 border-red-500/30"
+                                : isExpired
+                                    ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                                    : "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
                             }`}>
-                            {isEmergency ? "🚨 EMERGENCY" : isExpired ? "⚠️ EXPIRED" : "✓ ACTIVE"}
+                            {isCompleted ? "✓ COMPLETED" : isEmergency ? "🚨 EMERGENCY" : isExpired ? "⚠️ EXPIRED" : "✓ ACTIVE"}
                         </Badge>
                     </div>
                 </CardHeader>

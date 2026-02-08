@@ -23,6 +23,8 @@ interface VaultData {
   warning_triggered_at_ns: string;
   is_yielding: boolean;
   is_emergency: boolean;
+  is_completed: boolean;
+  telegram_chat_id: string;
 }
 
 @NearBindgen({})
@@ -98,6 +100,8 @@ export class SentinelRegistry {
       warning_triggered_at_ns: "0",
       is_yielding: false,
       is_emergency: false,
+      is_completed: false,
+      telegram_chat_id: "",
     };
 
     this.saveVault(caller, vault);
@@ -123,6 +127,11 @@ export class SentinelRegistry {
     const caller = near.predecessorAccountId();
     const vault = this.getVault(caller);
     if (!vault) throw new Error(`Vault not found for ${caller}. Call setup_vault first.`);
+
+    // Block ping for completed vaults
+    if (vault.is_completed) {
+      throw new Error("Vault task completed. Create a new vault to start fresh.");
+    }
 
     vault.last_active_ns = near.blockTimestamp().toString();
     vault.warning_triggered_at_ns = "0";
@@ -368,6 +377,7 @@ export class SentinelRegistry {
     }
 
     vault.is_emergency = true;
+    vault.is_completed = true; // Mark vault as completed - cannot be restarted
     const balance = BigInt(vault.vault_balance);
 
     if (balance > 0n) {
@@ -381,6 +391,27 @@ export class SentinelRegistry {
 
     this.saveVault(account_id, vault);
     return { status: "TRANSFER_COMPLETE", transferred: balance.toString(), owner: account_id };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  Telegram Integration
+  // ═══════════════════════════════════════════════════════════════════
+
+  @call({})
+  link_telegram({ account_id, chat_id }: { account_id: string; chat_id: string }): {
+    success: boolean;
+    message: string;
+  } {
+    const vault = this.getVault(account_id);
+    if (!vault) {
+      return { success: false, message: `Vault not found for ${account_id}` };
+    }
+
+    vault.telegram_chat_id = chat_id;
+    this.saveVault(account_id, vault);
+
+    near.log(`Telegram linked: ${account_id} -> chat ${chat_id}`);
+    return { success: true, message: "Telegram linked successfully" };
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -403,6 +434,8 @@ export class SentinelRegistry {
     is_execution_ready: boolean;
     is_yielding: boolean;
     is_emergency: boolean;
+    is_completed: boolean;
+    telegram_chat_id: string;
   } | null {
     const vault = this.getVault(account_id);
 
@@ -446,6 +479,8 @@ export class SentinelRegistry {
       is_execution_ready: isExecutionReady,
       is_yielding: vault.is_yielding,
       is_emergency: vault.is_emergency,
+      is_completed: vault.is_completed ?? false,
+      telegram_chat_id: vault.telegram_chat_id ?? "",
     };
   }
 

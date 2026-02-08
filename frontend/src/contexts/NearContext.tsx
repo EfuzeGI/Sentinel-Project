@@ -41,6 +41,8 @@ interface VaultStatus {
     is_execution_ready: boolean;
     is_yielding: boolean;
     is_emergency: boolean;
+    is_completed: boolean;
+    telegram_chat_id: string;
 }
 
 interface NearContextType {

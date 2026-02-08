@@ -86,6 +86,7 @@ export function VaultActions() {
 
     const isOwner = vaultStatus?.owner_id === accountId;
     const isInitialized = vaultStatus?.is_initialized;
+    const isCompleted = vaultStatus?.is_completed;
 
     // Show loading spinner while syncing with blockchain (only if no cached data)
     if (isSyncing && !vaultStatus) {
@@ -296,7 +297,36 @@ export function VaultActions() {
                         )}
 
                         <div className="grid gap-4">
-                            {isOwner && (
+                            {isCompleted ? (
+                                /* Vault Completed - Show Create New Vault option */
+                                <div className="space-y-4">
+                                    <div className="p-4 rounded-lg bg-slate-800/50 border border-slate-700/50">
+                                        <h4 className="text-lg font-semibold text-slate-300 mb-2">✓ Vault Task Completed</h4>
+                                        <p className="text-sm text-slate-400">
+                                            This vault task has been completed. To start a new task with fresh settings,
+                                            delete this vault and create a new one.
+                                        </p>
+                                    </div>
+                                    <Button
+                                        onClick={() => handleAction("reset", resetVault, "Vault deleted. You can now create a new one.")}
+                                        disabled={isAnyLoading}
+                                        variant="outline"
+                                        className="h-14 text-lg border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
+                                    >
+                                        {isLoading === "reset" ? (
+                                            <>
+                                                <Loader2 className="mr-3 h-5 w-5 animate-spin" />
+                                                Resetting...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Zap className="mr-3 h-5 w-5" />
+                                                Create New Vault Task
+                                            </>
+                                        )}
+                                    </Button>
+                                </div>
+                            ) : isOwner && (
                                 <Button
                                     onClick={() => handleAction("ping", ping, "Heartbeat sent successfully! Timer reset.")}
                                     disabled={isAnyLoading}

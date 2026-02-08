@@ -242,7 +242,7 @@ function initTelegramBot() {
             return;
         }
 
-        // Add to watchlist
+        // Add to local watchlist
         const subscribers = loadSubscribers();
         if (!subscribers[chatId]) subscribers[chatId] = [];
 
@@ -257,6 +257,14 @@ function initTelegramBot() {
 
         subscribers[chatId].push(accountId);
         saveSubscribers(subscribers);
+
+        // Save telegram_chat_id on-chain
+        try {
+            await callMethod(rpc, 'link_telegram', { account_id: accountId, chat_id: chatId });
+            log(`📱 Linked on-chain: ${accountId} -> chat ${chatId}`, C.green);
+        } catch (e) {
+            log(`Failed to link on-chain (vault may not exist): ${e.message}`, C.yellow);
+        }
 
         log(`📱 Added to watchlist: ${accountId} -> chat ${chatId}`, C.green);
 
@@ -368,17 +376,33 @@ function initTelegramBot() {
 }
 
 // Send alert to all subscribers watching this wallet
-async function sendTelegramAlert(targetWalletId, message) {
+// First tries on-chain telegram_chat_id, then falls back to local subscribers
+async function sendTelegramAlert(targetWalletId, message, vaultData = null) {
     if (!bot) {
         log('Telegram bot not initialized', C.dim);
         return false;
     }
 
-    const subscribers = loadSubscribers();
+    const sentChats = new Set(); // Avoid duplicate alerts
     let sentCount = 0;
 
+    // Try on-chain telegram_chat_id first
+    if (vaultData?.telegram_chat_id) {
+        const chatId = vaultData.telegram_chat_id;
+        try {
+            await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+            sentChats.add(chatId);
+            sentCount++;
+            log(`📱 Alert sent via on-chain link to chat ${chatId}`, C.green);
+        } catch (e) {
+            log(`Failed to alert on-chain chat ${chatId}: ${e.message}`, C.red);
+        }
+    }
+
+    // Also check local subscribers (backup/additional)
+    const subscribers = loadSubscribers();
     for (const [chatId, wallets] of Object.entries(subscribers)) {
-        if (Array.isArray(wallets) && wallets.includes(targetWalletId)) {
+        if (Array.isArray(wallets) && wallets.includes(targetWalletId) && !sentChats.has(chatId)) {
             try {
                 await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
                 sentCount++;
@@ -513,7 +537,8 @@ async function processVault(rpc, accountId) {
                         `💀 *TRANSFER EXECUTED*\n\n` +
                         `Vault: \`${accountId}\`\n` +
                         `Funds transferred to beneficiary.\n\n` +
-                        `The owner did not respond to warnings.`
+                        `The owner did not respond to warnings.`,
+                        status
                     );
                 } else {
                     log(`${prefix} ${C.bold}🟢 YIELD CANCELLED${C.reset} - Owner alive`, C.green);
@@ -561,7 +586,7 @@ Funds will be transferred to the beneficiary in *${gracePeriodFormatted}* unless
 
 👉 [PING NOW TO ABORT](https://sentinel-agent.netlify.app/)`;
 
-                await sendTelegramAlert(accountId, alertMessage);
+                await sendTelegramAlert(accountId, alertMessage, status);
 
                 log(`${prefix} ${C.bold}🟡 WARNING SHOT FIRED${C.reset} - ${gracePeriodFormatted} grace period started`, C.yellow);
             } catch (e) {
