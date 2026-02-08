@@ -570,28 +570,55 @@ export function VaultActions() {
                                 </div>
 
                                 {/* Connect Telegram */}
-                                <div className="p-4 rounded-lg bg-cyan-900/20 border border-cyan-500/30">
-                                    <div className="flex items-start gap-3">
-                                        <span className="text-2xl mt-0.5">📱</span>
-                                        <div className="space-y-3 flex-1">
-                                            <div>
-                                                <h4 className="text-cyan-400 font-medium">Connect Telegram</h4>
-                                                <p className="text-xs text-slate-400 mt-1">
-                                                    Link your Telegram account to receive instant alerts when your vault timer expires.
-                                                </p>
+                                {vaultStatus?.telegram_chat_id ? (
+                                    /* Already Connected */
+                                    <div className="p-4 rounded-lg bg-emerald-900/20 border border-emerald-500/30">
+                                        <div className="flex items-start gap-3">
+                                            <span className="text-2xl mt-0.5">✅</span>
+                                            <div className="space-y-3 flex-1">
+                                                <div>
+                                                    <h4 className="text-emerald-400 font-medium">Telegram Connected</h4>
+                                                    <p className="text-xs text-slate-400 mt-1">
+                                                        You will receive instant alerts when your vault timer expires.
+                                                    </p>
+                                                </div>
+                                                <a
+                                                    href={`https://t.me/sentinel_near_bot?start=${accountId}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center text-sm text-slate-400 hover:text-emerald-400 transition-colors"
+                                                >
+                                                    <ExternalLink className="mr-2 h-3 w-3" />
+                                                    Open Telegram Bot
+                                                </a>
                                             </div>
-                                            <a
-                                                href={`https://t.me/sentinel_near_bot?start=${accountId}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="inline-flex items-center justify-center w-full h-10 px-4 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition-colors"
-                                            >
-                                                <ExternalLink className="mr-2 h-4 w-4" />
-                                                Connect Telegram
-                                            </a>
                                         </div>
                                     </div>
-                                </div>
+                                ) : (
+                                    /* Not Connected */
+                                    <div className="p-4 rounded-lg bg-cyan-900/20 border border-cyan-500/30">
+                                        <div className="flex items-start gap-3">
+                                            <span className="text-2xl mt-0.5">📱</span>
+                                            <div className="space-y-3 flex-1">
+                                                <div>
+                                                    <h4 className="text-cyan-400 font-medium">Connect Telegram</h4>
+                                                    <p className="text-xs text-slate-400 mt-1">
+                                                        Link your Telegram account to receive instant alerts when your vault timer expires.
+                                                    </p>
+                                                </div>
+                                                <a
+                                                    href={`https://t.me/sentinel_near_bot?start=${accountId}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center justify-center w-full h-10 px-4 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition-colors"
+                                                >
+                                                    <ExternalLink className="mr-2 h-4 w-4" />
+                                                    Connect Telegram
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Reset Vault */}
                                 <div className="pt-6 border-t border-slate-700/50">
