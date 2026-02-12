@@ -25,12 +25,16 @@ export async function POST(request: Request) {
 
         steps.push(`2_config_ok:${accountId}`);
 
-        // Use the SDK directly
+        // Use the SDK directly — configure for TESTNET
         const { NovaSdk } = require("nova-sdk-js");
-        const sdk = new NovaSdk(accountId, { apiKey });
+        const sdk = new NovaSdk(accountId, {
+            apiKey,
+            rpcUrl: "https://rpc.testnet.near.org",
+            contractId: "nova-sdk-6.testnet",
+        });
         steps.push("3_sdk_created");
 
-        // Detect network from account
+        // Verify network detection
         const netInfo = sdk.getNetworkInfo();
         steps.push(`4_network:${netInfo.networkId},contract:${netInfo.contractId}`);
 
@@ -40,25 +44,16 @@ export async function POST(request: Request) {
             steps.push(`5_group_registered:${regResult}`);
         } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
-            steps.push(`5_group_err:${msg.substring(0, 120)}`);
-        }
-
-        // Check auth status
-        try {
-            const authInfo = await sdk.authStatus(GROUP_NAME);
-            steps.push(`6_auth_status:${JSON.stringify(authInfo).substring(0, 120)}`);
-        } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : String(e);
-            steps.push(`6_auth_err:${msg.substring(0, 120)}`);
+            steps.push(`5_group_err:${msg.substring(0, 150)}`);
         }
 
         // Upload
         const rawBuffer = Buffer.from(data, "utf-8");
         const filename = `sentinel_${Date.now()}.enc`;
-        steps.push("7_uploading");
+        steps.push("6_uploading");
 
         const result = await sdk.upload(GROUP_NAME, rawBuffer, filename);
-        steps.push("8_uploaded");
+        steps.push("7_uploaded");
 
         return NextResponse.json({ cid: result.cid, steps });
     } catch (err) {
