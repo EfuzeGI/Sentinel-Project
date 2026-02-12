@@ -25,7 +25,7 @@ export async function POST(request: Request) {
         const sdk = new NovaSdk(accountId, {
             apiKey,
             rpcUrl: "https://rpc.testnet.near.org",
-            contractId: "nova-sdk-6.testnet",
+            contractId: "nova-sdk-5.testnet",
         });
 
         const result = await sdk.retrieve(GROUP_NAME, cid);

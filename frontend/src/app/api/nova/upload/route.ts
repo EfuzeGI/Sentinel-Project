@@ -30,7 +30,7 @@ export async function POST(request: Request) {
         const sdk = new NovaSdk(accountId, {
             apiKey,
             rpcUrl: "https://rpc.testnet.near.org",
-            contractId: "nova-sdk-6.testnet",
+            contractId: "nova-sdk-5.testnet",
         });
         steps.push("3_sdk_created");
 
