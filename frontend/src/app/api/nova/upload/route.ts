@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
 
-// Force Node.js runtime for crypto support
 export const runtime = "nodejs";
 
 const NOVA_AUTH_URL = "https://nova-sdk.com";
 const NOVA_MCP_URL = "https://nova-mcp.fastmcp.app";
 const GROUP_NAME = "sentinel-hackathon-test";
 
-// Token cache (in-memory, per serverless invocation)
 let tokenCache: { token: string; expiresAt: number } | null = null;
 
 async function getSessionToken(): Promise<string> {
@@ -15,10 +13,9 @@ async function getSessionToken(): Promise<string> {
     const apiKey = process.env.NEXT_PUBLIC_NOVA_API_KEY;
 
     if (!accountId || !apiKey) {
-        throw new Error("NOVA Config missing: NEXT_PUBLIC_NOVA_ACCOUNT_ID or NEXT_PUBLIC_NOVA_API_KEY");
+        throw new Error("NOVA Config missing");
     }
 
-    // Return cached token if still valid (5 min buffer)
     if (tokenCache && tokenCache.expiresAt > Date.now() + 5 * 60 * 1000) {
         return tokenCache.token;
     }
@@ -40,7 +37,6 @@ async function getSessionToken(): Promise<string> {
     const { token, expires_in } = await res.json();
     if (!token) throw new Error("No token in auth response");
 
-    // Parse expiry (e.g., "24h")
     const match = (expires_in || "24h").match(/^(\d+)([hmd])$/);
     const expiresMs = match
         ? parseInt(match[1]) * (match[2] === "h" ? 3600000 : match[2] === "m" ? 60000 : 86400000)
@@ -58,7 +54,7 @@ async function callMcpTool(toolName: string, args: Record<string, string>) {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`,
+            Authorization: `Bearer ${token}`,
             "X-Account-Id": accountId,
         },
         body: JSON.stringify(args),
@@ -66,7 +62,7 @@ async function callMcpTool(toolName: string, args: Record<string, string>) {
 
     if (!res.ok) {
         const errBody = await res.text();
-        throw new Error(`MCP ${toolName} failed (${res.status}): ${errBody}`);
+        throw new Error(`MCP ${toolName} (${res.status}): ${errBody}`);
     }
 
     return res.json();
@@ -80,7 +76,7 @@ async function callMcpEndpoint(endpoint: string, body: Record<string, string>) {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`,
+            Authorization: `Bearer ${token}`,
             "X-Account-Id": accountId,
         },
         body: JSON.stringify(body),
@@ -88,13 +84,12 @@ async function callMcpEndpoint(endpoint: string, body: Record<string, string>) {
 
     if (!res.ok) {
         const errBody = await res.text();
-        throw new Error(`MCP endpoint ${endpoint} failed (${res.status}): ${errBody}`);
+        throw new Error(`MCP endpoint ${endpoint} (${res.status}): ${errBody}`);
     }
 
     return res.json();
 }
 
-// AES-256-GCM encryption using Node.js crypto
 async function encryptData(data: Buffer, keyB64: string): Promise<string> {
     const crypto = await import("crypto");
     const keyBytes = Buffer.from(keyB64, "base64");
@@ -105,61 +100,77 @@ async function encryptData(data: Buffer, keyB64: string): Promise<string> {
     return Buffer.concat([iv, encrypted, authTag]).toString("base64");
 }
 
-// SHA-256 hash
 async function computeSha256(data: Buffer): Promise<string> {
     const crypto = await import("crypto");
     return crypto.createHash("sha256").update(data).digest("hex");
 }
 
 export async function POST(request: Request) {
+    const steps: string[] = [];
+
     try {
-        const { data } = await request.json();
+        const body = await request.json();
+        const { data } = body;
+        steps.push("1_parsed_body");
 
         if (!data || typeof data !== "string") {
-            return NextResponse.json({ error: "Missing data" }, { status: 400 });
+            return NextResponse.json({ error: "Missing data field", steps }, { status: 400 });
         }
 
         const rawBuffer = Buffer.from(data, "utf-8");
+        steps.push("2_buffer_created");
 
-        // Step 1: Register group (ignore if exists)
+        // Step 1: Register group
         try {
             await callMcpTool("register_group", { group_id: GROUP_NAME });
+            steps.push("3_group_registered");
         } catch {
-            // Group already exists
+            steps.push("3_group_exists_ok");
         }
 
-        // Step 2: prepare_upload → get encryption key
+        // Step 2: prepare_upload
         const prepareResult = await callMcpTool("prepare_upload", {
             group_id: GROUP_NAME,
             filename: `sentinel_${Date.now()}.enc`,
         });
+        steps.push("4_prepare_upload_ok");
 
         const { upload_id, key } = prepareResult;
         if (!upload_id || !key) {
-            throw new Error("prepare_upload returned no upload_id or key");
+            return NextResponse.json(
+                { error: "prepare_upload returned no upload_id or key", prepareResult, steps },
+                { status: 500 }
+            );
         }
+        steps.push("5_got_upload_id_and_key");
 
-        // Step 3: Encrypt data locally (AES-256-GCM)
+        // Step 3: Encrypt
         const encryptedB64 = await encryptData(rawBuffer, key);
+        steps.push("6_encrypted");
 
-        // Step 4: Compute SHA-256 hash of plaintext
+        // Step 4: Hash
         const fileHash = await computeSha256(rawBuffer);
+        steps.push("7_hashed");
 
-        // Step 5: finalize_upload → upload to IPFS
+        // Step 5: Finalize
         const finalizeResult = await callMcpEndpoint("/api/finalize-upload", {
             upload_id,
             encrypted_data: encryptedB64,
             file_hash: fileHash,
         });
+        steps.push("8_finalized");
 
         if (!finalizeResult?.cid) {
-            throw new Error("finalize_upload returned no CID");
+            return NextResponse.json(
+                { error: "finalize_upload returned no CID", finalizeResult, steps },
+                { status: 500 }
+            );
         }
 
-        return NextResponse.json({ cid: finalizeResult.cid });
+        steps.push("9_done");
+        return NextResponse.json({ cid: finalizeResult.cid, steps });
     } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";
-        console.error("NOVA upload error:", message);
-        return NextResponse.json({ error: message }, { status: 500 });
+        return NextResponse.json({ error: message, steps }, { status: 500 });
     }
 }
