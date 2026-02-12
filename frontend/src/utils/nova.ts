@@ -1,28 +1,40 @@
 import { NovaSdk } from "nova-sdk-js";
 import { Buffer } from "buffer";
 
+// Hardcoded Testnet config to prevent accidental Mainnet usage
 const NOVA_CONFIG = {
-    accountId: process.env.NEXT_PUBLIC_NOVA_ACCOUNT_ID || "keepalive.nova-sdk.near",
+    accountId: process.env.NEXT_PUBLIC_NOVA_ACCOUNT_ID || "",
     apiKey: process.env.NEXT_PUBLIC_NOVA_API_KEY || "",
     contractId: "nova-sdk-5.testnet",
+    networkId: "testnet",
     rpcUrl: "https://rpc.testnet.near.org",
 };
 
 const GROUP_NAME = "sentinel-hackathon-test";
+
+function getNovaSDK(): NovaSdk {
+    if (!NOVA_CONFIG.accountId || !NOVA_CONFIG.apiKey) {
+        throw new Error("NOVA Config missing");
+    }
+
+    return new NovaSdk(NOVA_CONFIG.accountId, {
+        apiKey: NOVA_CONFIG.apiKey,
+        contractId: NOVA_CONFIG.contractId,
+        rpcUrl: NOVA_CONFIG.rpcUrl,
+    });
+}
 
 /**
  * Upload encrypted data to NOVA decentralized storage.
  * Returns "NOVA:<cid>" on success.
  */
 export async function uploadEncryptedData(encryptedText: string): Promise<string> {
-    if (!NOVA_CONFIG.apiKey) throw new Error("NOVA API Key is missing");
-
-    const sdk = new NovaSdk(NOVA_CONFIG.accountId, {
-        apiKey: NOVA_CONFIG.apiKey,
-        contractId: NOVA_CONFIG.contractId,
-        rpcUrl: NOVA_CONFIG.rpcUrl,
+    console.log("🔐 NOVA CONFIG CHECK:", {
+        account: NOVA_CONFIG.accountId,
+        contract: NOVA_CONFIG.contractId,
     });
 
+    const sdk = getNovaSDK();
     const filename = `sentinel_${Date.now()}.enc`;
 
     try {
@@ -38,6 +50,7 @@ export async function uploadEncryptedData(encryptedText: string): Promise<string
         throw new Error("Upload returned no CID");
     }
 
+    console.log("✅ NOVA upload OK, CID:", result.cid);
     return `NOVA:${result.cid}`;
 }
 
@@ -51,15 +64,7 @@ export async function retrieveEncryptedData(payload: string): Promise<string> {
     }
 
     const cid = payload.replace("NOVA:", "");
-
-    if (!NOVA_CONFIG.apiKey) throw new Error("NOVA API Key is missing");
-
-    const sdk = new NovaSdk(NOVA_CONFIG.accountId, {
-        apiKey: NOVA_CONFIG.apiKey,
-        contractId: NOVA_CONFIG.contractId,
-        rpcUrl: NOVA_CONFIG.rpcUrl,
-    });
-
+    const sdk = getNovaSDK();
     const result = await sdk.retrieve(GROUP_NAME, cid);
 
     if (!result?.data) {
@@ -73,5 +78,5 @@ export async function retrieveEncryptedData(payload: string): Promise<string> {
  * Check if NOVA credentials are configured.
  */
 export function isNovaConfigured(): boolean {
-    return !!NOVA_CONFIG.apiKey;
+    return !!(NOVA_CONFIG.accountId && NOVA_CONFIG.apiKey);
 }
