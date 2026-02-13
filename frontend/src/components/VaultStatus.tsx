@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { retrieveEncryptedData } from "@/utils/nova";
 
 export function VaultStatus() {
-    const { vaultStatus, accountId, isConnected, revealPayload, isTransactionPending } = useNear();
+    const { vaultStatus, accountId, isConnected, revealPayload, isTransactionPending, triggerWarning, checkPulse, resumePulse } = useNear();
     const [timeRemaining, setTimeRemaining] = useState<string>("");
     const [progressValue, setProgressValue] = useState(100);
     const [revealedSecret, setRevealedSecret] = useState<string | null>(null);
@@ -368,6 +368,45 @@ export function VaultStatus() {
                             )}
                         </div>
                     )}
+                    {/* Developer Controls (Testnet Only) */}
+                    <div className="pt-4 border-t border-slate-700/50">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Cloud className="h-4 w-4 text-cyan-400" />
+                            <span className="text-cyan-400 font-semibold text-sm">Developer Controls (Manual Agent)</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => vaultStatus && triggerWarning(vaultStatus.owner_id)}
+                                disabled={!isExpired || isWarningActive || isCompleted || isTransactionPending}
+                                className="bg-slate-900/50 border-orange-500/30 text-orange-400 hover:bg-orange-950/30 hover:text-orange-300"
+                            >
+                                1. Trigger Warning
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => checkPulse()}
+                                disabled={!isWarningActive || parseInt(vaultStatus.warning_grace_remaining_ms || "0") > 0 || isCompleted || isTransactionPending}
+                                className="bg-slate-900/50 border-purple-500/30 text-purple-400 hover:bg-purple-950/30 hover:text-purple-300"
+                            >
+                                2. Trigger Yield (Check Pulse)
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => vaultStatus && resumePulse(vaultStatus.owner_id, true)}
+                                disabled={!vaultStatus.is_yielding || isCompleted || isTransactionPending}
+                                className="bg-slate-900/50 border-red-500/30 text-red-400 hover:bg-red-950/30 hover:text-red-300"
+                            >
+                                3. Confirm Death
+                            </Button>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-2">
+                            * Use these buttons to manually advance the vault state if the background agent is not running.
+                        </p>
+                    </div>
                 </CardContent>
             </Card>
         </div>

@@ -63,6 +63,8 @@ interface NearContextType {
     deposit: (amount: string) => Promise<void>;
     withdraw: (amount?: string) => Promise<void>;
     setupVault: (beneficiary: string, intervalMs: number, gracePeriodMs?: number, securePayload?: string) => Promise<void>;
+    triggerWarning: (targetAccountId: string) => Promise<void>;
+    resumePulse: (targetAccountId: string, confirmDeath: boolean) => Promise<void>;
     revealPayload: (ownerAccountId?: string) => Promise<string | null>;
     updateBeneficiary: (newBeneficiary: string) => Promise<void>;
     updateInterval: (newIntervalMs: number) => Promise<void>;
@@ -435,6 +437,20 @@ export function NearProvider({ children }: { children: ReactNode }) {
         await refreshStatus();
     }, [callMethod, refreshStatus]);
 
+    // Manual Agent Actions (for testing/maintenance)
+    const triggerWarning = useCallback(async (targetAccountId: string) => {
+        await callMethod("trigger_warning", { account_id: targetAccountId });
+        await refreshStatus();
+    }, [callMethod, refreshStatus]);
+
+    const resumePulse = useCallback(async (targetAccountId: string, confirmDeath: boolean) => {
+        await callMethod("resume_pulse", {
+            account_id: targetAccountId,
+            confirm_death: confirmDeath
+        });
+        await refreshStatus();
+    }, [callMethod, refreshStatus]);
+
     // Reveal secure payload - calls contract @call method (requires signature)
     // ownerAccountId: optional, for beneficiary revealing someone else's vault
     const revealPayload = useCallback(async (ownerAccountId?: string): Promise<string | null> => {
@@ -516,6 +532,8 @@ export function NearProvider({ children }: { children: ReactNode }) {
         deposit,
         withdraw,
         setupVault,
+        triggerWarning,
+        resumePulse,
         revealPayload,
         updateBeneficiary,
         updateInterval,
