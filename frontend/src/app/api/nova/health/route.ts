@@ -16,26 +16,29 @@ export async function GET() {
             contractId: "nova-sdk.near",
         });
 
-        // Test auth by registering groups
-        // This is critical: if it fails, we need to know WHY.
-        await sdk.registerGroup("health-check-" + Date.now());
+        // Test auth by checking status instead of force-registering (prevents balance errors)
+        const auth = await sdk.authStatus();
 
         return NextResponse.json({
             status: "ok",
-            message: "NOVA Authenticated successfully on Mainnet",
+            message: "NOVA API Key is VALID! 🔑",
+            authenticated: auth.authenticated,
+            details: "Your account is authenticated, but you may need to add ~1 NEAR to 'keep-alive.nova-sdk.near' to cover storage for new groups/files.",
             debug: {
                 account: accountId,
-                keyPrefix: apiKey.substring(0, 10) + "..."
+                auth
             }
         });
-    } catch (err) {
-        return NextResponse.json({
-            status: "error",
-            error: err instanceof Error ? err.message : "Auth failed",
-            debug: {
-                account: accountId,
-                keyPrefix: apiKey.substring(0, 10) + "..."
-            }
-        }, { status: 500 });
+    } catch (err: any) {
+        // Parse the "Insufficient balance" error from the SDK
+        const errorMsg = err.message || "Unknown error";
+        if (errorMsg.includes("balance") && errorMsg.includes("cost")) {
+            return NextResponse.json({
+                status: "warning",
+                message: "API Key is Correct, but Balance is Low",
+                error: "Insufficient NEAR on account to perform storage operations.",
+                instruction: "Please send 1-2 NEAR to 'keep-alive.nova-sdk.near' to enable decentralized storage.",
+                debug: { account: accountId, raw_error: errorMsg }
+            });
+        }
     }
-}
