@@ -41,4 +41,11 @@ export async function GET() {
                 debug: { account: accountId, raw_error: errorMsg }
             });
         }
+
+        return NextResponse.json({
+            status: "error",
+            error: errorMsg,
+            debug: { account: accountId }
+        }, { status: 500 });
     }
+}
