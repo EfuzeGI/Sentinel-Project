@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
+const isMainnet = process.env.NEXT_PUBLIC_NETWORK_ID === "mainnet";
 const GROUP_NAME = "sentinel-final-v1";
 
 export async function POST(request: Request) {
@@ -13,6 +14,16 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Missing cid field" }, { status: 400 });
         }
 
+        // ─── MOCK MODE (Testnet or mock CID) ───
+        if (!isMainnet || cid.startsWith("NOVA_MOCK:")) {
+            console.log("⚠️ [NOVA MOCK] Retrieve skipped.");
+            return NextResponse.json({
+                data: "MOCKED_ENCRYPTED_DATA_PLEASE_USE_FALLBACK",
+                status: "mock_success",
+            });
+        }
+
+        // ─── REAL MODE (Mainnet) ───
         const accountId = process.env.NEXT_PUBLIC_NOVA_ACCOUNT_ID;
         const apiKey = process.env.NEXT_PUBLIC_NOVA_API_KEY;
 
@@ -20,18 +31,17 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "NOVA env vars missing" }, { status: 500 });
         }
 
-        // Use SDK with testnet config
         const { NovaSdk } = require("nova-sdk-js");
         const sdk = new NovaSdk(accountId, {
             apiKey,
-            rpcUrl: "https://rpc.testnet.near.org",
-            contractId: "nova-sdk-5.testnet",
+            rpcUrl: "https://rpc.mainnet.near.org",
+            contractId: "nova-sdk.near",
         });
 
         const result = await sdk.retrieve(GROUP_NAME, cid);
         const text = result.data.toString("utf-8");
 
-        return NextResponse.json({ data: text });
+        return NextResponse.json({ data: text, status: "real_success" });
     } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";
         return NextResponse.json({ error: message }, { status: 500 });
