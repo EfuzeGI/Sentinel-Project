@@ -246,8 +246,8 @@ export function NearProvider({ children }: { children: ReactNode }) {
                             metadata: {
                                 name: "Sentinel Protocol",
                                 description: "Dead Man's Switch for NEAR Protocol",
-                                url: "https://keep-alive-protocol.netlify.app",
-                                icons: ["https://keep-alive-protocol.netlify.app/logo.png"],
+                                url: "https://keepalive-fdn.netlify.app",
+                                icons: ["https://keepalive-fdn.netlify.app/logo.png"],
                             },
                         }) as any,
                     ],

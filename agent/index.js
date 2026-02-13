@@ -1006,7 +1006,7 @@ Your Vault Timer has *EXPIRED*.
 Vault: \`${accountId}\`
 Funds will be transferred to the beneficiary in *${gracePeriodFormatted}* unless you act.
 
-👉 [PING NOW TO ABORT](https://keep-alive-protocol.netlify.app/)`;
+👉 [PING NOW TO ABORT](https://keepalive-fdn.netlify.app/)`;
 
         await sendTelegramAlert(accountId, alertMessage, status);
 
