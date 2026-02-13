@@ -15,9 +15,9 @@ export async function POST(request: Request) {
 
 
 
-        // ─── REAL MODE (Mainnet) ───
-        const accountId = process.env.NEXT_PUBLIC_NOVA_ACCOUNT_ID;
-        const apiKey = process.env.NEXT_PUBLIC_NOVA_API_KEY;
+        // ─── HARDCODED FOR MAINNET RELEASE ───
+        const accountId = "keep-alive.nova-sdk.near";
+        const apiKey = "nova_sk_XvJ7poWarK1zM3IahbchJCpfdEGdu6bf";
 
         if (!accountId || !apiKey) {
             return NextResponse.json({ error: "NOVA env vars missing" }, { status: 500 });
