@@ -12,7 +12,7 @@ import { setupLedger } from "@near-wallet-selector/ledger";
 import { setupNightly } from "@near-wallet-selector/nightly";
 import { setupWalletConnect } from "@near-wallet-selector/wallet-connect";
 import { actionCreators } from "@near-js/transactions";
-import { CONTRACT_ID, NETWORK_ID } from "@/config/near";
+import { CONTRACT_ID, NETWORK_ID, NODE_URL, HELPER_URL, EXPLORER_URL } from "@/config/near";
 import "@near-wallet-selector/modal-ui/styles.css";
 
 const { functionCall } = actionCreators;
@@ -221,33 +221,41 @@ export function NearProvider({ children }: { children: ReactNode }) {
     // Initialize wallet selector
     useEffect(() => {
         const init = async () => {
+            console.log("Initializing NearContext with:", { NETWORK_ID, CONTRACT_ID, NODE_URL });
             try {
                 const _selector = await setupWalletSelector({
-                    network: NETWORK_ID as "testnet" | "mainnet",
+                    network: {
+                        networkId: NETWORK_ID as any,
+                        nodeUrl: NODE_URL,
+                        helperUrl: HELPER_URL,
+                        explorerUrl: EXPLORER_URL,
+                        indexerUrl: "https://api.kitwallet.app", // standard fallbacks
+                    },
                     modules: [
                         setupMyNearWallet({
                             walletUrl: NETWORK_ID === "mainnet" ? "https://app.mynearwallet.com" : "https://testnet.mynearwallet.com",
-                        }),
-                        setupHereWallet(),
-                        setupSender(),
-                        setupMeteorWallet(),
-                        setupBitteWallet(),
-                        setupNightly(),
-                        setupLedger(),
+                        }) as any,
+                        setupHereWallet() as any,
+                        setupSender() as any,
+                        setupMeteorWallet() as any,
+                        setupBitteWallet() as any,
+                        setupNightly() as any,
+                        setupLedger() as any,
                         setupWalletConnect({
-                            projectId: "8d944c2069002f5ad9c5204686a34e0e", // Standard project ID
+                            projectId: "8d944c2069002f5ad9c5204686a34e0e",
                             metadata: {
                                 name: "Sentinel Protocol",
                                 description: "Dead Man's Switch for NEAR Protocol",
                                 url: "https://keep-alive-protocol.netlify.app",
                                 icons: ["https://keep-alive-protocol.netlify.app/logo.png"],
                             },
-                        }),
+                        }) as any,
                     ],
                 });
 
                 const _modal = setupModal(_selector, {
                     contractId: CONTRACT_ID,
+                    theme: "dark",
                 });
 
                 const state = _selector.store.getState();
