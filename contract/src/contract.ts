@@ -14,7 +14,7 @@ const VAULT_PREFIX = "vault:";
 const OWNERS_KEY = "owners";
 
 // Agent account authorized to call agent_ping
-const AGENT_ACCOUNT = "testbruh.testnet";
+const AGENT_ACCOUNT = "agent-keepalive.near";
 
 interface VaultData {
   owner_id: string;

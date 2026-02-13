@@ -14,13 +14,8 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Missing cid field" }, { status: 400 });
         }
 
-        // ─── MOCK MODE (Testnet or mock CID) ───
-        if (!isMainnet || cid.startsWith("NOVA_MOCK:")) {
-            console.log("⚠️ [NOVA MOCK] Retrieve skipped.");
-            return NextResponse.json({
-                data: "MOCKED_ENCRYPTED_DATA_PLEASE_USE_FALLBACK",
-                status: "mock_success",
-            });
+        if (!isMainnet) {
+            return NextResponse.json({ error: "Mainnet only" }, { status: 403 });
         }
 
         // ─── REAL MODE (Mainnet) ───
@@ -36,6 +31,7 @@ export async function POST(request: Request) {
             apiKey,
             rpcUrl: "https://rpc.mainnet.near.org",
             contractId: "nova-sdk.near",
+            networkId: "mainnet",
         });
 
         const result = await sdk.retrieve(GROUP_NAME, cid);

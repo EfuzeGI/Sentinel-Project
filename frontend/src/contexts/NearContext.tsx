@@ -11,11 +11,11 @@ import "@near-wallet-selector/modal-ui/styles.css";
 
 const { functionCall } = actionCreators;
 
-// Multiple RPC endpoints for fallback
+// Mainnet RPC endpoints
 const RPC_ENDPOINTS = [
-    "https://testnet.rpc.fastnear.com",
-    "https://near-testnet.drpc.org",
-    "https://rpc.testnet.near.org",
+    "https://rpc.mainnet.near.org",
+    "https://rpc.fastnear.com",
+    "https://near.lava.build",
 ];
 
 // Polling interval (30 seconds)
@@ -118,14 +118,12 @@ async function registerVaultWithAgent(walletId: string) {
     }
 }
 
-// Call view method with RPC fallback - NOW accepts args
+// Call view method with RPC fallback
 async function callViewMethodWithFallback(methodName: string, args: object = {}): Promise<unknown> {
     const argsBase64 = btoa(JSON.stringify(args));
     let lastError: Error | null = null;
 
     for (const rpcUrl of RPC_ENDPOINTS) {
-        console.log("Trying RPC:", rpcUrl, "method:", methodName, "args:", args);
-
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -157,12 +155,10 @@ async function callViewMethodWithFallback(methodName: string, args: object = {})
             }
 
             const data = await response.json();
-            console.log("RPC Response from", rpcUrl, ":", data);
 
             if (data.error) {
                 const errorMessage = data.error.message || JSON.stringify(data.error);
                 if (errorMessage.includes("doesn't exist") || errorMessage.includes("MethodNotFound")) {
-                    console.log("Contract/method not found");
                     return null;
                 }
                 throw new Error(errorMessage);
@@ -171,13 +167,11 @@ async function callViewMethodWithFallback(methodName: string, args: object = {})
             if (data.result?.result) {
                 const bytes = new Uint8Array(data.result.result);
                 const text = new TextDecoder().decode(bytes);
-                console.log("Decoded result:", text);
                 return JSON.parse(text);
             }
 
             return null;
         } catch (error) {
-            console.error(`RPC ${rpcUrl} failed:`, error);
             lastError = error instanceof Error ? error : new Error(String(error));
         }
     }
@@ -212,7 +206,6 @@ export function NearProvider({ children }: { children: ReactNode }) {
                 const parsed = JSON.parse(cachedStatus) as VaultStatus;
                 setVaultStatus(parsed);
                 previousStatusRef.current = parsed;
-                console.log("Loaded cached vault status");
             } catch {
                 // Invalid cache
             }

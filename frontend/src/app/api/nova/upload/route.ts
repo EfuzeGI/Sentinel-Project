@@ -14,14 +14,8 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Missing data field" }, { status: 400 });
         }
 
-        // ─── MOCK MODE (Testnet) ───
         if (!isMainnet) {
-            console.log("⚠️ [NOVA MOCK] Upload skipped (Testnet down). Returning fake CID.");
-            await new Promise((r) => setTimeout(r, 2000));
-            return NextResponse.json({
-                cid: "NOVA_MOCK:" + Date.now(),
-                status: "mock_success",
-            });
+            return NextResponse.json({ error: "Mainnet only" }, { status: 403 });
         }
 
         // ─── REAL MODE (Mainnet) ───
@@ -37,6 +31,7 @@ export async function POST(request: Request) {
             apiKey,
             rpcUrl: "https://rpc.mainnet.near.org",
             contractId: "nova-sdk.near",
+            networkId: "mainnet",
         });
 
         // Register group (ignore if exists)

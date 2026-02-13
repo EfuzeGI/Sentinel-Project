@@ -13,23 +13,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ═══════════════════════════════════════════════════════════════════
-//   ███████╗███████╗███╗   ██╗████████╗██╗███╗   ██╗███████╗██╗     
-//   ██╔════╝██╔════╝████╗  ██║╚══██╔══╝██║████╗  ██║██╔════╝██║     
-//   ███████╗█████╗  ██╔██╗ ██║   ██║   ██║██╔██╗ ██║█████╗  ██║     
-//   ╚════██║██╔══╝  ██║╚██╗██║   ██║   ██║██║╚██╗██║██╔══╝  ██║     
-//   ███████║███████╗██║ ╚████║   ██║   ██║██║ ╚████║███████╗███████╗
-//   ╚══════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝
-//   Multi-Vault Warning Protocol Agent
+//   Sentinel Protocol: Multi-Vault Monitoring Agent
 // ═══════════════════════════════════════════════════════════════════
 
 const RPC_ENDPOINTS = [
-    'https://testnet.rpc.fastnear.com',   // Primary - fastest, no rate limits
-    'https://rpc.testnet.pagoda.co',      // Fallback 1
-    'https://rpc.testnet.near.org',       // Fallback 2 - official
+    'https://rpc.mainnet.near.org',
+    'https://rpc.fastnear.com',
+    'https://near.lava.build',
 ];
 
 const cfg = {
-    networkId: 'testnet',
+    networkId: process.env.NETWORK_ID || 'mainnet',
     contractId: process.env.CONTRACT_ID || 'testbruh.testnet',
     agentId: process.env.AGENT_ACCOUNT_ID || 'testbruh.testnet',
     agentKey: process.env.AGENT_PRIVATE_KEY,
@@ -1027,16 +1021,9 @@ Funds will be transferred to the beneficiary in *${gracePeriodFormatted}* unless
 // ═══════════════════════════════════════════════════════════════════
 
 async function main() {
-    console.log();
-    console.log(`${C.cyan}${C.bold}`);
-    console.log('  ███████╗███████╗███╗   ██╗████████╗██╗███╗   ██╗███████╗██╗     ');
-    console.log('  ██╔════╝██╔════╝████╗  ██║╚══██╔══╝██║████╗  ██║██╔════╝██║     ');
-    console.log('  ███████╗█████╗  ██╔██╗ ██║   ██║   ██║██╔██╗ ██║█████╗  ██║     ');
-    console.log('  ╚════██║██╔══╝  ██║╚██╗██║   ██║   ██║██║╚██╗██║██╔══╝  ██║     ');
-    console.log('  ███████║███████╗██║ ╚████║   ██║   ██║██║ ╚████║███████╗███████╗');
-    console.log('  ╚══════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝');
-    console.log(`${C.reset}`);
-    console.log(`${C.dim}  Multi-Vault Warning Protocol Agent${C.reset}`);
+    console.log('═══════════════════════════════════════════════════════════════════');
+    console.log(' Sentinel Protocol Agent: Active Duty');
+    console.log('═══════════════════════════════════════════════════════════════════');
     console.log();
 
     log(`Contract: ${cfg.contractId}`, C.dim);

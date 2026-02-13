@@ -11,7 +11,6 @@ import { uploadEncryptedData, isNovaConfigured } from "@/utils/nova";
 
 // Interval presets in milliseconds
 const INTERVAL_PRESETS = [
-    { label: "1 minute (testing)", value: 60_000 },
     { label: "1 hour", value: 60 * 60_000 },
     { label: "1 day", value: 24 * 60 * 60_000 },
     { label: "7 days", value: 7 * 24 * 60 * 60_000 },
@@ -19,8 +18,8 @@ const INTERVAL_PRESETS = [
 ];
 
 const GRACE_PERIOD_PRESETS = [
-    { label: "1 minute (testing)", value: 60_000 },
     { label: "1 hour", value: 60 * 60_000 },
+    { label: "12 hours", value: 12 * 60 * 60_000 },
     { label: "24 hours", value: 24 * 60 * 60_000 },
 ];
 
@@ -28,8 +27,8 @@ export function CreateVault() {
     const { setupVault, isTransactionPending, accountId } = useNear();
 
     const [beneficiary, setBeneficiary] = useState("");
-    const [intervalMs, setIntervalMs] = useState(60_000); // Default 1 min for testing
-    const [gracePeriodMs, setGracePeriodMs] = useState(60_000); // Default 1 min for testing
+    const [intervalMs, setIntervalMs] = useState(7 * 24 * 60 * 60_000); // Default 7 days
+    const [gracePeriodMs, setGracePeriodMs] = useState(24 * 60 * 60_000); // Default 24 hours
     const [error, setError] = useState<string | null>(null);
 
     // Custom minute input states
