@@ -121,7 +121,6 @@ export function Dashboard() {
         setRevealError(null);
         try {
             // Race against a timeout to prevent infinite loading
-            // Increased to 120s as user reported timeouts
             const timeoutPromise = new Promise((_, reject) =>
                 setTimeout(() => reject(new Error("Wallet interaction timed out. Please approve the transaction.")), 120000)
             );
@@ -132,39 +131,41 @@ export function Dashboard() {
             ]) as string | null;
 
             if (payload) {
-                // 1. Try Local Payload (On-Chain)
+                let decryptedResult = payload;
+                let decryptError = "";
+
+                // 1. Try Local Payload
                 const localPack = unpackE2ELocalPayload(payload);
                 if (localPack) {
                     try {
-                        const decrypted = await decryptSecret(localPack.ciphertext, localPack.key, localPack.iv);
-                        setRevealedSecret(decrypted);
+                        decryptedResult = await decryptSecret(localPack.ciphertext, localPack.key, localPack.iv);
                     } catch (e) {
                         console.error("Local decryption failed:", e);
-                        setRevealedSecret(payload);
-                        setRevealError("Decryption failed. Showing raw payload.");
+                        decryptError = "Decryption failed. Showing raw metadata.";
                     }
                 }
-                // 2. Try Nova Payload (IPFS)
+                // 2. Try Nova Payload
                 else {
                     const novaPack = unpackE2EPayload(payload);
                     if (novaPack) {
                         try {
-                            // Fetch ciphertext from Nova/IPFS
                             const ciphertext = await retrieveEncryptedData(`NOVA:${novaPack.cid}`);
-                            // Decrypt
-                            const decrypted = await decryptSecret(ciphertext, novaPack.key, novaPack.iv);
-                            setRevealedSecret(decrypted);
+                            decryptedResult = await decryptSecret(ciphertext, novaPack.key, novaPack.iv);
                         } catch (e) {
                             console.error("Nova retrieval/decryption failed:", e);
-                            setRevealedSecret(payload);
-                            setRevealError("Failed to retrieve from Nova/IPFS.");
+                            decryptError = "Failed to retrieve from Nova/IPFS. Using metadata.";
                         }
-                    } else {
-                        // 3. Raw/Unknown format
-                        setRevealedSecret(payload);
                     }
                 }
+
+                setRevealedSecret(decryptedResult);
+                if (decryptError) setRevealError(decryptError);
                 setShowSecret(true);
+
+                // Cache in session storage
+                if (accountId) {
+                    sessionStorage.setItem(`revealed_${accountId}`, decryptedResult);
+                }
             } else {
                 throw new Error("Unable to decrypt payload. You may not be authorized.");
             }
@@ -175,6 +176,17 @@ export function Dashboard() {
             setSecretLoading(false);
         }
     };
+
+    // Load from cache on mount
+    useEffect(() => {
+        if (accountId && typeof window !== "undefined") {
+            const cached = sessionStorage.getItem(`revealed_${accountId}`);
+            if (cached) {
+                setRevealedSecret(cached);
+                setShowSecret(true);
+            }
+        }
+    }, [accountId]);
 
     const handleCopy = () => {
         if (revealedSecret) {
@@ -234,6 +246,11 @@ export function Dashboard() {
                     <span className="text-[13px] font-mono text-[var(--text-muted)] tracking-widest uppercase">
                         Switch Status: <span style={{ color: statusColor }}>{switchStatus}</span>
                     </span>
+                    {!vaultStatus.is_emergency && !vaultStatus.is_yielding && !vaultStatus.is_completed && (
+                        <span className="text-[10px] font-mono text-[var(--text-dim)] border border-[var(--border)] px-1.5 py-0.5 ml-2">
+                            PROTECTING
+                        </span>
+                    )}
                 </div>
                 <div className="flex items-center gap-2">
                     <button
@@ -256,6 +273,18 @@ export function Dashboard() {
                     </button>
                 </div>
             </div>
+
+            {/* Beneficiary Guide */}
+            {!vaultStatus.is_completed && (
+                <div className="mb-6 p-3 border border-[var(--accent)]/20 bg-[var(--accent)]/5 rounded-sm flex items-center gap-3">
+                    <div className="p-1.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)]">
+                        <Eye className="w-3 h-3" />
+                    </div>
+                    <p className="text-[11px] text-[var(--text-muted)]">
+                        Viewing your own vault. Expected an inherited secret? Use the <button onClick={() => window.location.hash = "#access"} className="text-[var(--accent)] hover:underline">Access</button> tab to enter the owner&#39;s ID.
+                    </p>
+                </div>
+            )}
 
             <div className="grid lg:grid-cols-[1fr_380px] gap-5">
                 {/* Left: Timer Block */}

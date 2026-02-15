@@ -500,8 +500,19 @@ export function NearProvider({ children }: { children: ReactNode }) {
             if (result && typeof result === 'object' && 'status' in result) {
                 const txResult = result as { status: { SuccessValue?: string } };
                 if (txResult.status?.SuccessValue) {
-                    const decoded = atob(txResult.status.SuccessValue);
-                    return JSON.parse(decoded);
+                    try {
+                        const decoded = atob(txResult.status.SuccessValue);
+                        // Contract returns string | null. SDK JSON-encodes this.
+                        // Try parsing as JSON first (handles quoted strings).
+                        try {
+                            return JSON.parse(decoded);
+                        } catch {
+                            // If parsing fails, it might be a raw unquoted string
+                            return decoded;
+                        }
+                    } catch (e) {
+                        console.error("Failed to decode success value:", e);
+                    }
                 }
             }
 

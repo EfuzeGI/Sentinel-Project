@@ -20,18 +20,29 @@ export function BeneficiaryView() {
         setLoading(true);
         try {
             const targetAccount = ownerInput.trim() || undefined;
-            const payload = await revealPayload(targetAccount);
+
+            // Timeout to prevent infinite loading
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("Wallet interaction timed out. Please approve the transaction.")), 120000)
+            );
+
+            const payload = await Promise.race([
+                revealPayload(targetAccount),
+                timeoutPromise
+            ]) as string | null;
+
             if (payload) {
+                let decryptedResult = payload;
+                let decryptError = "";
+
                 // 1. Try Local Payload
                 const localPack = unpackE2ELocalPayload(payload);
                 if (localPack) {
                     try {
-                        const decrypted = await decryptSecret(localPack.ciphertext, localPack.key, localPack.iv);
-                        setResult(decrypted);
+                        decryptedResult = await decryptSecret(localPack.ciphertext, localPack.key, localPack.iv);
                     } catch (e) {
                         console.error("Local decryption failed:", e);
-                        setResult(payload);
-                        setError("Decryption failed. Showing raw payload.");
+                        decryptError = "Decryption failed. Showing raw metadata.";
                     }
                 }
                 // 2. Try Nova Payload
@@ -40,26 +51,45 @@ export function BeneficiaryView() {
                     if (novaPack) {
                         try {
                             const ciphertext = await retrieveEncryptedData(`NOVA:${novaPack.cid}`);
-                            const decrypted = await decryptSecret(ciphertext, novaPack.key, novaPack.iv);
-                            setResult(decrypted);
+                            decryptedResult = await decryptSecret(ciphertext, novaPack.key, novaPack.iv);
                         } catch (e) {
                             console.error("Nova retrieval/decryption failed:", e);
-                            setResult(payload);
-                            setError("Failed to retrieve from Nova/IPFS.");
+                            decryptError = "Failed to retrieve from Nova/IPFS. Using metadata.";
                         }
-                    } else {
-                        // 3. Raw
-                        setResult(payload);
                     }
+                }
+
+                setResult(decryptedResult);
+                if (decryptError) setError(decryptError);
+
+                // Cache the result in session storage so it persists if they refresh during this session
+                if (targetAccount) {
+                    sessionStorage.setItem(`revealed_${targetAccount}`, decryptedResult);
                 }
             } else {
                 setError("No payload found for this vault, or the vault has not triggered yet.");
             }
         } catch (err: unknown) {
+            console.error("Reveal failed:", err);
             setError(err instanceof Error ? err.message : "Failed to reveal payload.");
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
+
+    // Load from cache on mount if applicable (optional enhancement)
+    useState(() => {
+        if (typeof window !== "undefined") {
+            const lastOwner = localStorage.getItem("last_revealed_owner");
+            if (lastOwner) {
+                const cached = sessionStorage.getItem(`revealed_${lastOwner}`);
+                if (cached) {
+                    setResult(cached);
+                    setOwnerInput(lastOwner);
+                }
+            }
+        }
+    });
 
     const handleCopy = () => {
         if (result) {
