@@ -16,6 +16,8 @@ const __dirname = path.dirname(__filename);
 //   KeepAlive Protocol: Multi-Vault Monitoring Agent
 // ═══════════════════════════════════════════════════════════════════
 
+let bot = null;
+
 const RPC_ENDPOINTS = [
     'https://rpc.mainnet.near.org',
     'https://rpc.fastnear.com',
