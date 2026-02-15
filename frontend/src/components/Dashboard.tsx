@@ -32,8 +32,16 @@ export function Dashboard() {
         if (!vaultStatus) return;
 
         const startTime = Date.now();
-        const initialRemaining = Number(vaultStatus.time_remaining_ms);
-        const total = Number(vaultStatus.heartbeat_interval_ms);
+
+        // Determine which time source to use
+        const useGracePeriod = vaultStatus.is_warning_active;
+        const initialRemaining = useGracePeriod
+            ? Number(vaultStatus.warning_grace_remaining_ms)
+            : Number(vaultStatus.time_remaining_ms);
+
+        const total = useGracePeriod
+            ? Number(vaultStatus.grace_period_ms)
+            : Number(vaultStatus.heartbeat_interval_ms);
 
         const tick = () => {
             const elapsed = Date.now() - startTime;
@@ -66,14 +74,36 @@ export function Dashboard() {
         return `${Math.round(val / 60000)}m`;
     };
 
+    const [revealError, setRevealError] = useState<string | null>(null);
+
     const handleReveal = async () => {
         setSecretLoading(true);
+        setRevealError(null);
         try {
-            const payload = await revealPayload();
-            setRevealedSecret(payload);
-            setShowSecret(true);
-        } catch { /* ignore */ }
-        setSecretLoading(false);
+            // Race against a timeout to prevent infinite loading
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("Wallet interaction timed out")), 60000)
+            );
+
+            const payload = await Promise.race([
+                revealPayload(),
+                timeoutPromise
+            ]) as string | null;
+
+            if (payload) {
+                setRevealedSecret(payload);
+                setShowSecret(true);
+            } else {
+                // If null is returned without error (e.g. redirect wallet), we might not reach here due to reload
+                // But if we do, it means no payload was found or unauthorized
+                throw new Error("Unable to decrypt payload. You may not be authorized.");
+            }
+        } catch (err) {
+            console.error("Reveal failed:", err);
+            setRevealError(err instanceof Error ? err.message : "Failed to reveal payload");
+        } finally {
+            setSecretLoading(false);
+        }
     };
 
     const handleCopy = () => {
@@ -261,20 +291,27 @@ export function Dashboard() {
                                 {revealedSecret}
                             </div>
                         ) : (
-                            <button
-                                onClick={handleReveal}
-                                disabled={secretLoading}
-                                className="w-full flex items-center justify-center gap-2 py-3 border border-[var(--border)] text-[13px] text-[var(--text-muted)] hover:text-[var(--text)] hover:border-[var(--border-hover)] transition-colors"
-                            >
-                                {secretLoading ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                ) : (
-                                    <>
-                                        <Eye className="w-3.5 h-3.5" />
-                                        Reveal
-                                    </>
+                            <div className="space-y-3">
+                                <button
+                                    onClick={handleReveal}
+                                    disabled={secretLoading}
+                                    className="w-full flex items-center justify-center gap-2 py-3 border border-[var(--border)] text-[13px] text-[var(--text-muted)] hover:text-[var(--text)] hover:border-[var(--border-hover)] transition-colors disabled:opacity-50"
+                                >
+                                    {secretLoading ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                        <>
+                                            <Eye className="w-3.5 h-3.5" />
+                                            Reveal
+                                        </>
+                                    )}
+                                </button>
+                                {revealError && (
+                                    <p className="text-[11px] text-red-400 text-center animate-in fade-in slide-in-from-top-1">
+                                        {revealError}
+                                    </p>
                                 )}
-                            </button>
+                            </div>
                         )}
                     </div>
 
