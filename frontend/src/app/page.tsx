@@ -47,8 +47,13 @@ export default function Home() {
     if (activeTab === "dashboard" && !hasVault && isConnected) {
       setActiveTab("create");
     }
-    // We REMOVE the redirect AWAY from 'create' if user has vault
-    // This allows user to see 'BeneficiaryView' below 'CreateVault'
+    // AUTOMATED REDIRECT AFTER CREATION
+    // If the user has a vault and is currently on the 'create' tab, 
+    // it means they just finished creating it (or already had one).
+    // We move them to the dashboard automatically.
+    if (activeTab === "create" && hasVault && isConnected) {
+      setActiveTab("dashboard");
+    }
   }, [isConnected, hasVault, activeTab]);
 
   const showLoading = isConnected && (isLoading || (isSyncing && !vaultStatus));

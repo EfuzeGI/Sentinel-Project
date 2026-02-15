@@ -126,6 +126,29 @@ export function CreateVault() {
     };
 
     const isReady = beneficiary.trim() && secretPayload.trim();
+    const hasVault = vaultStatus !== null && vaultStatus.is_initialized;
+
+    if (hasVault && !isSubmitting) {
+        return (
+            <div className="max-w-[680px] mx-auto px-6 py-20 text-center animate-reveal">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[var(--accent-dim)] border border-[var(--accent)]/20 mb-6">
+                    <CheckCircle2 className="w-8 h-8 text-[var(--accent)]" />
+                </div>
+                <h1 className="text-[28px] font-bold text-[var(--text)] mb-3">Vault Active</h1>
+                <p className="text-[15px] text-[var(--text-muted)] mb-10 max-w-[400px] mx-auto">
+                    You already have an active KeepAlive vault. Manage your heartbeat and funds in the dashboard.
+                </p>
+                <button
+                    onClick={() => {
+                        window.dispatchEvent(new CustomEvent("sentinel:navigate", { detail: "dashboard" }));
+                    }}
+                    className="px-8 py-3.5 bg-[var(--text)] text-black font-semibold hover:opacity-90 transition-opacity"
+                >
+                    Go to Dashboard
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div className="max-w-[680px] mx-auto px-6 py-14">
