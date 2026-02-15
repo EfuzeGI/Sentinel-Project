@@ -246,8 +246,8 @@ export function NearProvider({ children }: { children: ReactNode }) {
                             metadata: {
                                 name: "KeepAlive Protocol",
                                 description: "Automated Inheritance for NEAR Protocol",
-                                url: "https://keepalive-fdn.netlify.app",
-                                icons: ["https://keepalive-fdn.netlify.app/logo.png"],
+                                url: "https://keepalive-fdn.vercel.app",
+                                icons: ["https://keepalive-fdn.vercel.app/logo.png"],
                             },
                         }) as any,
                     ],

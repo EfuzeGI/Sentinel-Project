@@ -466,7 +466,7 @@ export class KeepAliveProtocol {
 
       const hasPayload = vault.secure_payload ? true : false;
       const memoText = hasPayload
-        ? "⚠️ KEEPALIVE LEGACY RECEIVED. Encrypted instructions await you. Visit keepalive-fdn.netlify.app and use 'Beneficiary Access' to reveal your secret message."
+        ? "⚠️ KEEPALIVE LEGACY RECEIVED. Encrypted instructions await you. Visit keepalive-fdn.vercel.app and use 'Beneficiary Access' to reveal your secret message."
         : "⚠️ KEEPALIVE LEGACY RECEIVED. Automated Inheritance triggered — funds transferred.";
 
       near.log(`MEMO: ${memoText}`);

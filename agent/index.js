@@ -501,7 +501,7 @@ function initTelegramBot() {
                 '• /clear - Remove all wallets\n\n' +
                 '• /clear - Remove all wallets\n\n' +
                 `📊 Currently watching: *${wallets.length} wallet(s)*\n\n` +
-                '👉 [Open Dashboard](https://keepalive-fdn.netlify.app)',
+                '👉 [Open Dashboard](https://keepalive-fdn.vercel.app)',
                 { parse_mode: 'Markdown' }
             );
             return;
@@ -551,7 +551,7 @@ function initTelegramBot() {
             `• Warning shot is fired\n` +
             `• Transfer is initiated\n\n` +
             `📊 Currently watching: *${subscribers[chatId].length} wallet(s)*\n\n` +
-            `👉 [Open Dashboard](https://keepalive-fdn.netlify.app)`,
+            `👉 [Open Dashboard](https://keepalive-fdn.vercel.app)`,
             { parse_mode: 'Markdown' }
         );
     });
@@ -568,7 +568,7 @@ function initTelegramBot() {
                 `📊 *Your Watchlist*\n\n` +
                 `${walletList}\n\n` +
                 `_To remove:_ /unlink wallet.testnet\n\n` +
-                `👉 [Open Dashboard](https://keepalive-fdn.netlify.app)`,
+                `👉 [Open Dashboard](https://keepalive-fdn.vercel.app)`,
                 { parse_mode: 'Markdown' }
             );
         } else {
@@ -1035,7 +1035,7 @@ This vault is now in EMERGENCY state.`;
                     `No on-chain activity detected.\n` +
                     `Vault: \`${accountId}\`\n` +
                     `Time remaining: *${remaining}*\n\n` +
-                    `👉 [PING NOW](https://keep-alive-protocol.netlify.app/) to keep your vault alive!`,
+                    `👉 [PING NOW](https://keepalive-fdn.vercel.app/) to keep your vault alive!`,
                     status
                 );
                 log(`${prefix} ⚠️ Danger zone warning sent`, C.yellow);
@@ -1068,7 +1068,7 @@ Your Vault Timer has *EXPIRED*.
 Vault: \`${accountId}\`
 Funds will be transferred to the beneficiary in *${gracePeriodFormatted}* unless you act.
 
-👉 [PING NOW TO ABORT](https://keepalive-fdn.netlify.app/)`;
+👉 [PING NOW TO ABORT](https://keepalive-fdn.vercel.app/)`;
 
         await sendTelegramAlert(accountId, alertMessage, status);
 
