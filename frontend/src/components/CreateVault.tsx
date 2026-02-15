@@ -107,15 +107,19 @@ export function CreateVault() {
 
             // 5. Auto-register with Monitoring Agent
             try {
-                // Use a relative path or the production URL for the agent if known
-                // Since this is a browser app, it should talk to the API
-                await fetch(`/api/agent/register-vault`, {
+                const regResponse = await fetch(`/api/agent/register-vault`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ wallet_id: accountId }),
                 });
+                if (regResponse.ok) {
+                    console.log("✅ Agent registration successful");
+                } else {
+                    const err = await regResponse.json();
+                    console.warn("⚠️ Agent registration warning:", err.error || regResponse.statusText);
+                }
             } catch (e) {
-                console.warn("⚠️ Agent registration failed:", e);
+                console.warn("⚠️ Agent registration failed to reach proxy:", e);
             }
         } catch (err) {
             console.error("Vault setup failed:", err);

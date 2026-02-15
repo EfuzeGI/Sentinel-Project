@@ -41,6 +41,8 @@ export function Dashboard() {
     const [showSecret, setShowSecret] = useState(false);
     const [secretLoading, setSecretLoading] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [isMonitored, setIsMonitored] = useState<boolean | null>(null);
+    const [isRegistering, setIsRegistering] = useState(false);
 
     // Track if we've triggered an auto-refresh for the current zero-state
     const hasRefreshedRef = useRef(false);
@@ -113,6 +115,47 @@ export function Dashboard() {
             if (zeroPollIntervalRef.current) clearInterval(zeroPollIntervalRef.current);
         };
     }, [vaultStatus, refreshStatus, isSyncing]);
+
+    // Check agent monitoring status
+    useEffect(() => {
+        if (!accountId) return;
+
+        const checkMonitoring = async () => {
+            try {
+                const res = await fetch("/api/agent/register-vault");
+                if (res.ok) {
+                    const data = await res.json();
+                    const watched = data.vaults || [];
+                    setIsMonitored(watched.includes(accountId));
+                }
+            } catch (e) {
+                console.warn("Could not fetch agent status");
+            }
+        };
+
+        checkMonitoring();
+        const id = setInterval(checkMonitoring, 60000); // Check every minute
+        return () => clearInterval(id);
+    }, [accountId]);
+
+    const handleRegister = async () => {
+        if (!accountId) return;
+        setIsRegistering(true);
+        try {
+            const res = await fetch("/api/agent/register-vault", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ wallet_id: accountId }),
+            });
+            if (res.ok) {
+                setIsMonitored(true);
+            }
+        } catch (e) {
+            console.error("Manual registration failed");
+        } finally {
+            setIsRegistering(false);
+        }
+    };
 
     const formatNear = (yocto: string) => {
         const n = Number(BigInt(yocto || "0")) / 1e24;
@@ -393,13 +436,31 @@ export function Dashboard() {
                             { icon: Clock, label: "Heartbeat Interval", value: formatDuration(vaultStatus.heartbeat_interval_ms), color: "var(--text)" },
                             { icon: Shield, label: "Grace Period", value: formatDuration(vaultStatus.grace_period_ms), color: "var(--amber)" },
                             { icon: Users, label: "Assigned Beneficiary", value: vaultStatus.beneficiary_id, color: "var(--text)" },
+                            {
+                                icon: ShieldAlert,
+                                label: "Monitoring Agent",
+                                value: isMonitored === null ? "..." : isMonitored ? "Active" : "Inactive",
+                                color: isMonitored ? "var(--accent)" : "var(--warn)",
+                                action: !isMonitored && isMonitored !== null ? (
+                                    <button
+                                        onClick={handleRegister}
+                                        disabled={isRegistering}
+                                        className="text-[10px] underline ml-2 hover:text-[var(--text)] transition-colors"
+                                    >
+                                        {isRegistering ? "..." : "Activate"}
+                                    </button>
+                                ) : null
+                            },
                         ].map((item, i) => (
                             <div key={i} className={`flex items-center justify-between px-6 py-4 ${i > 0 ? "border-t border-[var(--border)]" : ""}`}>
                                 <div className="flex items-center gap-3">
                                     <item.icon className="w-4 h-4 text-[var(--text-dim)]" />
                                     <span className="text-[14px] text-[var(--text-muted)]">{item.label}</span>
                                 </div>
-                                <span className="text-[14px] font-mono font-medium" style={{ color: item.color }}>{item.value}</span>
+                                <div className="flex items-center">
+                                    <span className="text-[14px] font-mono font-medium" style={{ color: item.color }}>{item.value}</span>
+                                    {('action' in item) && item.action}
+                                </div>
                             </div>
                         ))}
                     </div>
