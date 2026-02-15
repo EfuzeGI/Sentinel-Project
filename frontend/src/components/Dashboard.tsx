@@ -2,7 +2,19 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useNear } from "@/contexts/NearContext";
-import { Activity, ChevronRight, Copy, Eye, Clock, Shield, Users, Loader2, RotateCcw, RefreshCw, Trash2, ExternalLink } from "lucide-react";
+import {
+    Activity, ChevronRight, Copy, Eye, Clock, Shield, AlertCircle,
+    Settings,
+    ShieldAlert,
+    Terminal,
+    ExternalLink,
+    CheckCircle2,
+    RefreshCw,
+    Loader2,
+    Trash2,
+    Users,
+    Check,
+} from "lucide-react";
 import { decryptSecret, unpackE2ELocalPayload, unpackE2EPayload } from "@/utils/encryption";
 import { retrieveEncryptedData } from "@/utils/nova";
 

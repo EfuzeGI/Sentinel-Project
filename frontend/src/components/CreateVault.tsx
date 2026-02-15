@@ -2,7 +2,21 @@
 
 import { useState } from "react";
 import { useNear } from "@/contexts/NearContext";
-import { Shield, Clock, Key, Users, AlertTriangle, Info, Check, Brain, Wallet, Lock, Loader2, ExternalLink } from "lucide-react";
+import {
+    Clock,
+    Lock,
+    Loader2,
+    ExternalLink,
+    Check,
+    CheckCircle2,
+    Shield,
+    Key,
+    Users,
+    AlertTriangle,
+    Info,
+    Brain,
+    Wallet,
+} from "lucide-react";
 import { encryptSecret, packE2EPayload } from "@/utils/encryption";
 import { uploadEncryptedData } from "@/utils/nova";
 

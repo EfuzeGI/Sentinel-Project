@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { NovaSdk } from "nova-sdk-js";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "NOVA env vars missing" }, { status: 500 });
         }
 
-        const { NovaSdk } = require("nova-sdk-js");
+
         const sdk = new NovaSdk(accountId, {
             apiKey,
             rpcUrl: "https://rpc.mainnet.near.org",
