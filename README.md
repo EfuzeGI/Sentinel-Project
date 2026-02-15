@@ -1,101 +1,97 @@
-# Sentinel
+# KeepAlive Protocol
 
-Dead Man's Switch on NEAR Protocol with **Yield/Resume Pattern** for async off-chain verification.
+**Trustless Digital Inheritance on NEAR Protocol**
 
-If the vault owner stops sending heartbeat pings, the contract enters a YIELD state and waits for a verification agent to check owner status before transferring funds.
+KeepAlive is a decentralized protocol that ensures your crypto assets are securely transferred to a designated beneficiary if you ever become inactive. It acts as an on-chain automated inheritance system, protecting your digital legacy without intermediaries, custodians, or trust.
 
-## How it works
+![Dashboard Preview](https://keepalive-fdn.netlify.app/og-image.png)
 
-```
-┌─────────┐    ping()     ┌──────────┐
-│  Owner  │──────────────▶│ Contract │
-└─────────┘               └──────────┘
-                               │
-                 check_pulse() │ (if expired)
-                               ▼
-                      ┌────────────────┐
-                      │  YIELD STATE   │  ← Contract pauses
-                      └────────────────┘
-                               │
-                      Agent verifies...
-                               │
-                 resume_pulse() │
-                               ▼
-              ┌─────────────────────────────┐
-              │ ALIVE → Reset timer         │
-              │ DEAD  → Transfer to beneficiary │
-              └─────────────────────────────┘
-```
+## Core Features
 
-### Yield/Resume Flow
+- **Automated Asset Transfer**: Funds locked in your vault are automatically transferred to your heir if you fail to send a heartbeat ping.
+- **NOVA Integration**: Attach encrypted secrets (private keys, messages) to your vault. Secrets are encrypted client-side (AES-256-GCM) and stored on the NOVA decentralized storage network.
+- **Zero-Knowledge Architecture**: The server and protocol never see your unencrypted data. Only your beneficiary can decrypt the payload after the protocol triggers.
+- **Yield/Resume Pattern**: If you miss a heartbeat, the contract enters a `YIELD` state. An off-chain agent verifies your status before finalizing the transfer, preventing accidental triggers.
 
-1. Owner deploys contract, sets beneficiary + timeout interval
-2. Owner calls `ping()` periodically to prove they're alive
-3. If heartbeat expires → `check_pulse()` puts contract in **YIELD** state
-4. Agent performs off-chain verification (scans Twitter, GitHub, Discord, etc.)
-5. Agent calls `resume_pulse(confirm_death)`:
-   - `false` → Owner verified alive, yield cancelled
-   - `true` → No signs of life, funds transfer to beneficiary
+## Architecture
 
-## Project structure
+### Inheritance Flow
 
-```
-contract/   NEAR smart contract (near-sdk-js)
-frontend/   Next.js web interface
-agent/      Node.js verification daemon
+```mermaid
+graph TD
+    A[Owner] -->|Deposits Funds| B(Smart Contract Vault)
+    A -->|Sets Heartbeat Interval| B
+    A -->|Encrypts Secrets| C(NOVA Storage)
+    
+    A -->|Periodic Ping| B
+    
+    subgraph "If Owner Goes Silent"
+    B -->|Timer Expires| D{Yield State}
+    E[Agent] -->|Verifies Inactivity| D
+    D -->|Confirmed| F[Transfer to Heir]
+    F -->|Unlock Secrets| C
+    end
 ```
 
-## Quick start
+### Tech Stack
 
-### 1. Deploy contract
+- **Smart Contract**: NEAR Protocol (TypeScript / near-sdk-js)
+- **Frontend**: Next.js 16, React 19, TailwindCSS v4, motion-primitives
+- **Storage**: NOVA Decentralized Storage (IPFS-based)
+- **Encryption**: Web Crypto API (AES-256-GCM)
+- **Agent**: Node.js automated verification daemon
 
-```bash
-cd contract && npm install && npm run build
-near deploy <account>.testnet build/sentinel_vault.wasm
-near call <contract> setup_vault '{"beneficiary":"friend.testnet","interval":120000}' --accountId <owner>
-```
+## Getting Started
 
-### 2. Run frontend
+### Prerequisites
 
-```bash
-cd frontend && npm install
-cp .env.example .env.local
-npm run dev
-```
+- Node.js v18+
+- NEAR Wallet
 
-### 3. Run agent
+### Installation
 
-```bash
-cd agent && npm install
-cp .env.example .env   # add AGENT_PRIVATE_KEY
-node index.js
-```
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/EfuzeGI/Sentinel-Project.git
+   cd Sentinel-Project
+   ```
 
-## Contract API
+2. **Frontend Setup**
+   ```bash
+   cd frontend
+   npm install
+   cp .env.example .env.local
+   # Configure your .env.local with NEXT_PUBLIC_NOVA_API_KEY
+   npm run dev
+   ```
 
-| Method | Type | Description |
-|--------|------|-------------|
-| `setup_vault` | call | Initialize with beneficiary and interval |
-| `ping` | call | Reset heartbeat (owner) |
-| `check_pulse` | call | Check expiry, initiate YIELD |
-| `resume_pulse` | call | Continue after verification |
-| `deposit` | call | Add NEAR |
-| `withdraw` | call | Withdraw (owner) |
-| `get_status` | view | Full vault state |
-| `reset_vault` | call | Clear vault |
+3. **Agent Setup (Optional)**
+   The agent monitors vaults and triggers the yield/transfer process.
+   ```bash
+   cd agent
+   npm install
+   cp .env.example .env
+   # Configure AGENT_PRIVATE_KEY and TELEGRAM_BOT_TOKEN
+   node index.js
+   ```
 
-### Status fields
+## Smart Contract
 
-- `is_expired` - Heartbeat deadline passed
-- `is_yielding` - Contract waiting for agent verification
-- `is_emergency` - Transfer executed
+The core logic resides in `contract/src/contract.ts`. Key methods:
 
-## Tech stack
+- `setup_vault({ beneficiary, interval })`: Initialize your vault.
+- `ping()`: Reset your heartbeat timer.
+- `deposit()`: Add funds to your vault.
+- `withdraw()`: Retrieve funds (owner only).
+- `get_status()`: meaningful state for UI.
 
-- Smart contract: TypeScript + near-sdk-js
-- Frontend: Next.js 16, React 19, TailwindCSS v4
-- Agent: Node.js + near-api-js
+## Telegram Bot
+
+The **@keepalive_near_bot** provides notifications for:
+- Heartbeat warnings (when time is running low)
+- Transfer execution events
+- Vault status updates
 
 ## License
 
-MIT
+MIT License. Open source and trustless.

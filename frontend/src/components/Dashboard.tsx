@@ -1,243 +1,302 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useNear } from "@/contexts/NearContext";
-import { Heart, Wallet, Users, Clock, Send, Loader2, Settings, AlertTriangle, Zap } from "lucide-react";
-import { useState, useMemo } from "react";
+import { Activity, ChevronRight, Copy, Eye, Clock, Shield, Users, Loader2, RotateCcw, RefreshCw, Trash2, ExternalLink } from "lucide-react";
 
 export function Dashboard() {
     const {
+        accountId,
         vaultStatus,
         ping,
         deposit,
-        updateBeneficiary,
-        updateInterval,
+        withdraw,
+        revealPayload,
         resetVault,
         isTransactionPending,
-        accountId
+        refreshStatus,
     } = useNear();
 
-    const [activeTab, setActiveTab] = useState<"deposit" | "settings">("deposit");
+    const [hours, setHours] = useState("00");
+    const [minutes, setMinutes] = useState("00");
+    const [seconds, setSeconds] = useState("00");
+    const [progress, setProgress] = useState(100);
     const [depositAmount, setDepositAmount] = useState("");
-    const [newBeneficiary, setNewBeneficiary] = useState("");
-    const [newInterval, setNewInterval] = useState("");
+    const [revealedSecret, setRevealedSecret] = useState<string | null>(null);
+    const [showSecret, setShowSecret] = useState(false);
+    const [secretLoading, setSecretLoading] = useState(false);
+    const [copied, setCopied] = useState(false);
 
-    // Status calculation
-    const status = useMemo(() => {
-        if (!vaultStatus) return "standby";
-        if (vaultStatus.is_completed) return "completed";
-        if (vaultStatus.is_emergency || vaultStatus.is_execution_ready) return "emergency";
-        if (vaultStatus.is_yielding) return "yielding";
-        if (vaultStatus.is_expired) return "expired";
-        if (vaultStatus.is_warning_active) return "warning";
-        return "active";
+    // Timer countdown
+    useEffect(() => {
+        if (!vaultStatus) return;
+
+        const startTime = Date.now();
+        const initialRemaining = Number(vaultStatus.time_remaining_ms);
+        const total = Number(vaultStatus.heartbeat_interval_ms);
+
+        const tick = () => {
+            const elapsed = Date.now() - startTime;
+            const ms = Math.max(0, initialRemaining - elapsed);
+
+            const h = Math.floor(ms / 3600000);
+            const m = Math.floor((ms % 3600000) / 60000);
+            const s = Math.floor((ms % 60000) / 1000);
+
+            setHours(String(h).padStart(2, "0"));
+            setMinutes(String(m).padStart(2, "0"));
+            setSeconds(String(s).padStart(2, "0"));
+            setProgress(total > 0 ? Math.min(100, ((total - ms) / total) * 100) : 0);
+        };
+
+        tick();
+        const interval = setInterval(tick, 1000);
+        return () => clearInterval(interval);
     }, [vaultStatus]);
 
-    // Format functions
-    const formatNear = (yocto: string) => (parseFloat(yocto) / 1e24).toFixed(2);
-
-    const formatTime = (ns: string) => {
-        const totalMinutes = Math.floor(parseInt(ns) / 60_000_000_000);
-        const days = Math.floor(totalMinutes / 1440);
-        const hours = Math.floor((totalMinutes % 1440) / 60);
-        const minutes = totalMinutes % 60;
-
-        if (days > 0) return `${days}d ${hours}h`;
-        if (hours > 0) return `${hours}h ${minutes}m`;
-        return `${minutes}m`;
+    const formatNear = (yocto: string) => {
+        const n = Number(BigInt(yocto || "0")) / 1e24;
+        return n.toFixed(n < 0.01 ? 4 : 2);
     };
 
-    const formatDays = (ns: string) => Math.floor(parseInt(ns) / (24 * 60 * 60 * 1_000_000_000));
-    const getTelegramLink = () => accountId ? `https://t.me/sentinel_near_bot?start=${accountId}` : "#";
-
-    // Handlers
-    const handlePing = async () => { try { await ping(); } catch (e) { console.error(e); } };
-    const handleDeposit = async () => { if (!depositAmount) return; try { await deposit(depositAmount); setDepositAmount(""); } catch (e) { console.error(e); } };
-    const handleUpdateBeneficiary = async () => { if (!newBeneficiary) return; try { await updateBeneficiary(newBeneficiary); setNewBeneficiary(""); } catch (e) { console.error(e); } };
-    const handleUpdateInterval = async () => { const d = parseInt(newInterval); if (!d) return; try { await updateInterval(d * 86400000); setNewInterval(""); } catch (e) { console.error(e); } };
-    const handleResetVault = async () => { if (!confirm("Reset vault? All funds will be withdrawn.")) return; try { await resetVault(); } catch (e) { console.error(e); } };
-
-    const statusColors: Record<string, { badge: string; dot: string; timer: string }> = {
-        active: { badge: "text-cyan-400", dot: "bg-cyan-400", timer: "text-cyan-400 drop-shadow-[0_0_25px_rgba(6,182,212,0.6)]" },
-        warning: { badge: "text-amber-400", dot: "bg-amber-400 animate-pulse", timer: "text-amber-400 drop-shadow-[0_0_25px_rgba(245,158,11,0.6)]" },
-        expired: { badge: "text-red-400", dot: "bg-red-400 animate-pulse", timer: "text-red-400 drop-shadow-[0_0_25px_rgba(239,68,68,0.6)]" },
-        emergency: { badge: "text-red-400", dot: "bg-red-400 animate-pulse", timer: "text-red-400 drop-shadow-[0_0_25px_rgba(239,68,68,0.6)]" },
-        yielding: { badge: "text-purple-400", dot: "bg-purple-400", timer: "text-purple-400 drop-shadow-[0_0_25px_rgba(168,85,247,0.6)]" },
-        standby: { badge: "text-gray-400", dot: "bg-gray-400", timer: "text-white/60" },
-        completed: { badge: "text-emerald-400", dot: "bg-emerald-400", timer: "text-emerald-400 drop-shadow-[0_0_25px_rgba(16,185,129,0.6)]" },
+    const formatDuration = (ms: string) => {
+        const val = Number(ms);
+        if (val >= 86400000) return `${Math.round(val / 86400000)}d`;
+        if (val >= 3600000) return `${Math.round(val / 3600000)}h`;
+        return `${Math.round(val / 60000)}m`;
     };
 
-    const statusLabels: Record<string, string> = {
-        active: "Active",
-        warning: "Warning",
-        expired: "Expired",
-        emergency: "Emergency",
-        yielding: "Verifying",
-        standby: "Standby",
-        completed: "Completed",
+    const handleReveal = async () => {
+        setSecretLoading(true);
+        try {
+            const payload = await revealPayload();
+            setRevealedSecret(payload);
+            setShowSecret(true);
+        } catch { /* ignore */ }
+        setSecretLoading(false);
     };
 
-    const sc = statusColors[status];
+    const handleCopy = () => {
+        if (revealedSecret) {
+            navigator.clipboard.writeText(revealedSecret);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
+    };
+
+    const handleDeposit = async () => {
+        if (!depositAmount) return;
+        await deposit(depositAmount);
+        setDepositAmount("");
+    };
+
+    if (!vaultStatus) return null;
+
+    const switchStatus = vaultStatus.is_completed
+        ? "COMPLETED"
+        : vaultStatus.is_emergency
+            ? "EMERGENCY"
+            : vaultStatus.is_yielding
+                ? "YIELDING"
+                : vaultStatus.is_warning_active
+                    ? "WARNING"
+                    : vaultStatus.is_expired
+                        ? "EXPIRED"
+                        : "ACTIVE";
+
+    const statusColor = switchStatus === "ACTIVE" ? "var(--accent)" : switchStatus === "WARNING" ? "var(--warn)" : "var(--danger)";
 
     return (
-        // ═══ ATMOSPHERIC BACKGROUND ═══
-        <div className="min-h-[calc(100vh-80px)] flex items-center justify-center p-8 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-900/20 via-black to-black">
-            <div className="w-full max-w-4xl">
+        <div className="max-w-[1200px] mx-auto px-8 py-8">
+            {/* Status Bar */}
+            <div className="flex items-center justify-between mb-6 animate-reveal">
+                <div className="flex items-center gap-2.5">
+                    <span className="w-2 h-2 rounded-full animate-pulse-dot" style={{ backgroundColor: statusColor }} />
+                    <span className="text-[13px] font-mono text-[var(--text-muted)] tracking-widest uppercase">
+                        Switch Status: <span style={{ color: statusColor }}>{switchStatus}</span>
+                    </span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => refreshStatus()}
+                        disabled={isTransactionPending}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-mono text-[var(--text-dim)] hover:text-[var(--text-muted)] border border-[var(--border)] hover:border-[var(--border-hover)] transition-colors disabled:opacity-30"
+                        title="Refresh vault state"
+                    >
+                        <RefreshCw className="w-3 h-3" />
+                        Refresh
+                    </button>
+                    <button
+                        onClick={() => resetVault()}
+                        disabled={isTransactionPending}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-mono text-red-400/60 hover:text-red-400 border border-red-900/30 hover:border-red-800/50 transition-colors disabled:opacity-30"
+                        title="Delete vault and return funds"
+                    >
+                        <Trash2 className="w-3 h-3" />
+                        Reset Vault
+                    </button>
+                </div>
+            </div>
 
-                {/* ═══ THE VAULT — GLASSMORPHISM CARD ═══ */}
-                <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-10 shadow-[0_0_80px_-15px_rgba(6,182,212,0.2)]">
-
-                    {/* Header: Timer + Status + Button */}
-                    <div className="flex items-start justify-between mb-10">
-                        {/* Left: Glowing Timer */}
-                        <div>
-                            <div className={`text-8xl font-bold font-mono tracking-tighter mb-2 ${sc.timer}`}>
-                                {vaultStatus ? formatTime(vaultStatus.time_remaining_ms) : "—"}
-                            </div>
-                            <div className="text-white/40 text-lg">Time remaining until expiry</div>
+            <div className="grid lg:grid-cols-[1fr_380px] gap-5">
+                {/* Left: Timer Block */}
+                <div className="border border-[var(--border)] bg-[var(--surface)] p-10 animate-reveal delay-1">
+                    {/* Countdown */}
+                    <div className="flex items-baseline justify-center gap-2 mb-8">
+                        <div className="text-center">
+                            <span className="text-[80px] font-bold tracking-tight leading-none font-mono text-[var(--text)] animate-ticker">{hours}</span>
+                            <p className="text-[11px] font-mono text-[var(--text-dim)] mt-2 tracking-widest uppercase">Hours</p>
                         </div>
-
-                        {/* Right: Status + Button */}
-                        <div className="text-right flex flex-col items-end gap-4">
-                            <div className={`inline-flex items-center gap-2.5 px-4 py-2 rounded-full text-sm uppercase tracking-wider ${sc.badge} bg-white/5 border border-white/10 backdrop-blur-sm`}>
-                                <span className={`w-2.5 h-2.5 rounded-full ${sc.dot}`} />
-                                {statusLabels[status]}
-                            </div>
-                            {/* LIQUID BUTTON */}
-                            <button
-                                onClick={handlePing}
-                                disabled={isTransactionPending || status === "expired" || status === "yielding"}
-                                className="flex items-center gap-3 h-16 px-10 rounded-2xl bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-400 hover:to-teal-400 disabled:opacity-40 text-black font-semibold text-xl transition-all shadow-lg shadow-cyan-500/25 hover:shadow-[0_0_30px_rgba(6,182,212,0.5)]"
-                            >
-                                {isTransactionPending ? <Loader2 className="w-6 h-6 animate-spin" /> : <><Heart className="w-6 h-6" /> I'M ALIVE</>}
-                            </button>
+                        <span className="text-[48px] font-light text-[var(--text-dim)] mx-2">:</span>
+                        <div className="text-center">
+                            <span className="text-[80px] font-bold tracking-tight leading-none font-mono text-[var(--text)]">{minutes}</span>
+                            <p className="text-[11px] font-mono text-[var(--text-dim)] mt-2 tracking-widest uppercase">Minutes</p>
+                        </div>
+                        <span className="text-[48px] font-light text-[var(--text-dim)] mx-2">:</span>
+                        <div className="text-center">
+                            <span className="text-[80px] font-bold tracking-tight leading-none font-mono text-[var(--text)]">{seconds}</span>
+                            <p className="text-[11px] font-mono text-[var(--text-dim)] mt-2 tracking-widest uppercase">Seconds</p>
                         </div>
                     </div>
 
-                    {/* Stats Row — Inset Cards */}
-                    <div className="grid grid-cols-4 gap-6 mb-10 pb-10 border-b border-white/10">
-                        <div className="bg-white/5 border border-white/5 rounded-2xl p-5 hover:border-cyan-500/20 transition-colors">
-                            <div className="flex items-center gap-2 text-white/40 text-sm mb-2">
-                                <Wallet className="w-4 h-4" /> Balance
-                            </div>
-                            <div className="text-white text-xl font-semibold">
-                                {vaultStatus ? formatNear(vaultStatus.vault_balance) : "0"} <span className="text-white/40 font-normal">NEAR</span>
-                            </div>
-                        </div>
-                        <div className="bg-white/5 border border-white/5 rounded-2xl p-5 hover:border-cyan-500/20 transition-colors">
-                            <div className="flex items-center gap-2 text-white/40 text-sm mb-2">
-                                <Users className="w-4 h-4" /> Beneficiary
-                            </div>
-                            <div className="text-white text-lg font-medium truncate">
-                                {vaultStatus?.beneficiary_id || "—"}
-                            </div>
-                        </div>
-                        <div className="bg-white/5 border border-white/5 rounded-2xl p-5 hover:border-cyan-500/20 transition-colors">
-                            <div className="flex items-center gap-2 text-white/40 text-sm mb-2">
-                                <Clock className="w-4 h-4" /> Interval
-                            </div>
-                            <div className="text-white text-xl font-semibold">
-                                {vaultStatus ? `${formatDays(vaultStatus.heartbeat_interval_ms)} days` : "—"}
-                            </div>
-                        </div>
-                        <a href={getTelegramLink()} target="_blank" rel="noopener noreferrer" className="bg-white/5 border border-white/5 hover:border-cyan-500/30 hover:bg-white/[0.08] rounded-2xl p-5 transition-all group">
-                            <div className="flex items-center gap-2 text-white/40 group-hover:text-cyan-400 text-sm mb-2 transition-colors">
-                                <Send className="w-4 h-4" /> Telegram
-                            </div>
-                            <div className="text-white group-hover:text-cyan-400 text-lg font-medium transition-colors">
-                                Connect Bot →
-                            </div>
-                        </a>
+                    {/* Progress */}
+                    <div className="relative h-[3px] bg-[var(--border)] rounded-full mb-2">
+                        <div
+                            className="absolute top-0 left-0 h-full rounded-full transition-all duration-1000"
+                            style={{ width: `${progress}%`, backgroundColor: statusColor }}
+                        />
+                    </div>
+                    <div className="flex justify-between text-[11px] font-mono text-[var(--text-dim)]">
+                        <span>TRIGGER</span>
+                        <span>RESET</span>
                     </div>
 
-                    {/* Actions Section */}
-                    <div>
-                        {/* Tabs */}
-                        <div className="flex gap-3 mb-8">
-                            <button
-                                onClick={() => setActiveTab("deposit")}
-                                className={`flex items-center gap-2 px-6 py-3 rounded-xl text-base font-medium transition-all ${activeTab === "deposit"
-                                        ? "bg-gradient-to-r from-cyan-500 to-teal-500 text-black shadow-lg shadow-cyan-500/20"
-                                        : "text-white/50 hover:text-white hover:bg-white/5"
-                                    }`}
-                            >
-                                <Wallet className="w-5 h-5" /> Deposit
-                            </button>
-                            <button
-                                onClick={() => setActiveTab("settings")}
-                                className={`flex items-center gap-2 px-6 py-3 rounded-xl text-base font-medium transition-all ${activeTab === "settings"
-                                        ? "bg-gradient-to-r from-cyan-500 to-teal-500 text-black shadow-lg shadow-cyan-500/20"
-                                        : "text-white/50 hover:text-white hover:bg-white/5"
-                                    }`}
-                            >
-                                <Settings className="w-5 h-5" /> Settings
-                            </button>
-                        </div>
-
-                        {/* Tab Content */}
-                        {activeTab === "deposit" && (
-                            <div className="flex gap-4">
-                                <input
-                                    type="number"
-                                    placeholder="Amount in NEAR"
-                                    value={depositAmount}
-                                    onChange={(e) => setDepositAmount(e.target.value)}
-                                    className="flex-1 h-14 px-6 bg-white/5 border border-white/10 rounded-xl text-white text-lg placeholder:text-white/30 focus:border-cyan-500/50 focus:outline-none focus:bg-white/[0.08] transition-all"
-                                />
-                                <button
-                                    onClick={handleDeposit}
-                                    disabled={isTransactionPending || !depositAmount}
-                                    className="h-14 px-8 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-400 hover:to-teal-400 disabled:opacity-40 text-black font-semibold text-lg transition-all flex items-center gap-2 shadow-lg shadow-cyan-500/20 hover:shadow-[0_0_25px_rgba(6,182,212,0.4)]"
-                                >
-                                    {isTransactionPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Zap className="w-5 h-5" /> Deposit</>}
-                                </button>
+                    {/* Heartbeat Action */}
+                    <button
+                        onClick={ping}
+                        disabled={isTransactionPending}
+                        className="mt-10 w-full flex items-center justify-between px-6 py-5 border border-[var(--border)] hover:border-[var(--accent)]/30 transition-all group bg-[var(--bg)]"
+                    >
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 border border-[var(--border)] group-hover:border-[var(--accent)]/30 flex items-center justify-center transition-colors">
+                                <Activity className="w-5 h-5 text-[var(--text-muted)] group-hover:text-[var(--accent)] transition-colors" />
                             </div>
+                            <div className="text-left">
+                                <p className="text-[15px] font-semibold text-[var(--text)]">Ping</p>
+                                <p className="text-[13px] text-[var(--text-dim)]">Send a heartbeat to reset your countdown timer.</p>
+                            </div>
+                        </div>
+                        {isTransactionPending ? (
+                            <Loader2 className="w-4 h-4 text-[var(--text-dim)] animate-spin" />
+                        ) : (
+                            <ChevronRight className="w-4 h-4 text-[var(--text-dim)] group-hover:text-[var(--text)] transition-colors" />
                         )}
-
-                        {activeTab === "settings" && (
-                            <div className="space-y-5">
-                                {/* Beneficiary */}
-                                <div className="flex gap-4">
-                                    <input
-                                        type="text"
-                                        placeholder="New beneficiary (account.near)"
-                                        value={newBeneficiary}
-                                        onChange={(e) => setNewBeneficiary(e.target.value)}
-                                        className="flex-1 h-12 px-5 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/30 focus:border-cyan-500/50 focus:outline-none focus:bg-white/[0.08] transition-all"
-                                    />
-                                    <button onClick={handleUpdateBeneficiary} disabled={isTransactionPending || !newBeneficiary} className="h-12 px-6 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-400 hover:to-teal-400 disabled:opacity-40 text-black font-semibold transition-all shadow-lg shadow-cyan-500/20">
-                                        Update
-                                    </button>
-                                </div>
-
-                                {/* Interval */}
-                                <div className="flex gap-4">
-                                    <input
-                                        type="number"
-                                        placeholder="New interval (days)"
-                                        value={newInterval}
-                                        onChange={(e) => setNewInterval(e.target.value)}
-                                        className="flex-1 h-12 px-5 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-white/30 focus:border-cyan-500/50 focus:outline-none focus:bg-white/[0.08] transition-all"
-                                    />
-                                    <button onClick={handleUpdateInterval} disabled={isTransactionPending || !newInterval} className="h-12 px-6 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-400 hover:to-teal-400 disabled:opacity-40 text-black font-semibold transition-all shadow-lg shadow-cyan-500/20">
-                                        Update
-                                    </button>
-                                </div>
-
-                                {/* Reset */}
-                                <div className="pt-6 border-t border-white/5 flex items-center justify-between">
-                                    <div className="text-red-400/70 flex items-center gap-2">
-                                        <AlertTriangle className="w-5 h-5" /> Danger zone
-                                    </div>
-                                    <button onClick={handleResetVault} disabled={isTransactionPending} className="h-11 px-5 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/50 disabled:opacity-40 font-medium transition-all">
-                                        Reset Vault
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
+                    </button>
                 </div>
 
+                {/* Right Column */}
+                <div className="flex flex-col gap-5">
+                    {/* Vault Balance */}
+                    <div className="border border-[var(--border)] bg-[var(--surface)] p-6 animate-reveal delay-2">
+                        <p className="text-[11px] font-mono text-[var(--text-dim)] tracking-widest uppercase mb-3">Vault Balance</p>
+                        <p className="text-[36px] font-bold text-[var(--text)] tracking-tight">
+                            {formatNear(vaultStatus.vault_balance)}
+                            <span className="text-[16px] font-normal text-[var(--text-muted)] ml-2">NEAR</span>
+                        </p>
+                        <div className="flex gap-2 mt-5">
+                            <input
+                                type="text"
+                                value={depositAmount}
+                                onChange={e => setDepositAmount(e.target.value)}
+                                placeholder="0.0"
+                                className="flex-1 bg-[var(--bg)] border border-[var(--border)] px-4 py-2.5 text-[13px] font-mono text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--border-hover)] min-w-0"
+                            />
+                            <button
+                                onClick={handleDeposit}
+                                disabled={isTransactionPending || !depositAmount}
+                                className="px-5 py-2.5 bg-[var(--text)] text-black text-[13px] font-semibold hover:opacity-90 transition-opacity disabled:opacity-30"
+                            >
+                                Deposit
+                            </button>
+                        </div>
+                        <button
+                            onClick={() => withdraw()}
+                            disabled={isTransactionPending}
+                            className="w-full mt-3 px-4 py-2.5 border border-[var(--border)] text-[13px] text-[var(--text-muted)] hover:text-[var(--text)] hover:border-[var(--border-hover)] transition-colors disabled:opacity-30"
+                        >
+                            Withdraw All
+                        </button>
+                    </div>
+
+                    {/* Details */}
+                    <div className="border border-[var(--border)] bg-[var(--surface)] animate-reveal delay-3">
+                        {[
+                            { icon: Clock, label: "Interval", value: formatDuration(vaultStatus.heartbeat_interval_ms), color: "var(--text)" },
+                            { icon: Shield, label: "Grace Period", value: formatDuration(vaultStatus.grace_period_ms), color: "var(--amber)" },
+                            { icon: Users, label: "Beneficiary", value: vaultStatus.beneficiary_id, color: "var(--text)" },
+                        ].map((item, i) => (
+                            <div key={i} className={`flex items-center justify-between px-6 py-4 ${i > 0 ? "border-t border-[var(--border)]" : ""}`}>
+                                <div className="flex items-center gap-3">
+                                    <item.icon className="w-4 h-4 text-[var(--text-dim)]" />
+                                    <span className="text-[14px] text-[var(--text-muted)]">{item.label}</span>
+                                </div>
+                                <span className="text-[14px] font-mono font-medium" style={{ color: item.color }}>{item.value}</span>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Secret Payload */}
+                    <div className="border border-[var(--border)] bg-[var(--surface)] p-6 animate-reveal delay-4">
+                        <div className="flex items-center justify-between mb-3">
+                            <p className="text-[14px] font-semibold text-[var(--text)]">Secret Payload</p>
+                            {showSecret && revealedSecret && (
+                                <button onClick={handleCopy} className="flex items-center gap-1 text-[11px] font-mono text-[var(--text-dim)] hover:text-[var(--text)] transition-colors">
+                                    <Copy className="w-3 h-3" />
+                                    {copied ? "Copied" : "Copy"}
+                                </button>
+                            )}
+                        </div>
+                        {showSecret && revealedSecret ? (
+                            <div className="bg-[var(--bg)] border border-[var(--border)] p-4 text-[12px] font-mono text-[var(--text-muted)] break-all leading-relaxed">
+                                {revealedSecret}
+                            </div>
+                        ) : (
+                            <button
+                                onClick={handleReveal}
+                                disabled={secretLoading}
+                                className="w-full flex items-center justify-center gap-2 py-3 border border-[var(--border)] text-[13px] text-[var(--text-muted)] hover:text-[var(--text)] hover:border-[var(--border-hover)] transition-colors"
+                            >
+                                {secretLoading ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                    <>
+                                        <Eye className="w-3.5 h-3.5" />
+                                        Reveal
+                                    </>
+                                )}
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Telegram */}
+                    <a
+                        href={`https://t.me/keepalive_near_bot?start=${accountId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="border border-[var(--border)] bg-[var(--surface)] p-5 flex items-center justify-between group hover:border-[var(--border-hover)] transition-colors animate-reveal delay-5"
+                    >
+                        <div className="flex items-center gap-3">
+                            <span className="text-[16px]">📱</span>
+                            <div>
+                                <p className="text-[13px] font-medium text-[var(--text)]">Telegram Alerts</p>
+                                <p className="text-[11px] text-[var(--text-dim)]">
+                                    {vaultStatus?.telegram_chat_id ? "Connected — receiving alerts" : "Get notified when your timer runs low"}
+                                </p>
+                            </div>
+                        </div>
+                        <ExternalLink className="w-3.5 h-3.5 text-[var(--text-dim)] group-hover:text-[var(--text-muted)] transition-colors" />
+                    </a>
+                </div>
             </div>
         </div>
     );

@@ -244,8 +244,8 @@ export function NearProvider({ children }: { children: ReactNode }) {
                         setupWalletConnect({
                             projectId: "8d944c2069002f5ad9c5204686a34e0e",
                             metadata: {
-                                name: "Sentinel Protocol",
-                                description: "Dead Man's Switch for NEAR Protocol",
+                                name: "KeepAlive Protocol",
+                                description: "Automated Inheritance for NEAR Protocol",
                                 url: "https://keepalive-fdn.netlify.app",
                                 icons: ["https://keepalive-fdn.netlify.app/logo.png"],
                             },

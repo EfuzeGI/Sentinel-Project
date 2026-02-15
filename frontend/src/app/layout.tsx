@@ -3,8 +3,8 @@ import "./globals.css";
 import { NearProvider } from "@/contexts/NearContext";
 
 export const metadata: Metadata = {
-  title: "Sentinel",
-  description: "Dead Man's Switch on NEAR Protocol",
+  title: "KeepAlive Protocol",
+  description: "Trustless Digital Inheritance on NEAR Protocol — Automated Asset Transfer",
 };
 
 export default function RootLayout({

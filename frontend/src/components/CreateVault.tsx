@@ -2,333 +2,307 @@
 
 import { useState } from "react";
 import { useNear } from "@/contexts/NearContext";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Shield, Clock, User, Loader2, AlertCircle, Zap, Lock, Cloud } from "lucide-react";
-import { uploadEncryptedData, isNovaConfigured } from "@/utils/nova";
-import { encryptSecret, packE2EPayload } from "@/utils/encryption";
+import { Lock, Clock, Loader2, ExternalLink, Check } from "lucide-react";
 
-// Interval presets in milliseconds
-const INTERVAL_PRESETS = [
-    { label: "1 hour", value: 60 * 60_000 },
-    { label: "1 day", value: 24 * 60 * 60_000 },
-    { label: "7 days", value: 7 * 24 * 60 * 60_000 },
-    { label: "30 days", value: 30 * 24 * 60 * 60_000 },
-];
+const PRESETS = {
+    interval: [
+        { label: "2m", ms: 120000 },
+        { label: "5m", ms: 300000 },
+        { label: "1h", ms: 3600000 },
+        { label: "24h", ms: 86400000 },
+        { label: "7d", ms: 604800000 },
+        { label: "30d", ms: 2592000000 },
+    ],
+    grace: [
+        { label: "1m", ms: 60000 },
+        { label: "5m", ms: 300000 },
+        { label: "1h", ms: 3600000 },
+        { label: "12h", ms: 43200000 },
+        { label: "24h", ms: 86400000 },
+        { label: "48h", ms: 172800000 },
+    ],
+};
 
-const GRACE_PERIOD_PRESETS = [
-    { label: "1 hour", value: 60 * 60_000 },
-    { label: "12 hours", value: 12 * 60 * 60_000 },
-    { label: "24 hours", value: 24 * 60 * 60_000 },
-];
+function msToLabel(ms: number): string {
+    if (ms >= 86400000) return `${(ms / 86400000).toFixed(ms % 86400000 === 0 ? 0 : 1)}d`;
+    if (ms >= 3600000) return `${(ms / 3600000).toFixed(ms % 3600000 === 0 ? 0 : 1)}h`;
+    return `${Math.round(ms / 60000)}m`;
+}
+
+// Slider converts 0-100 → ms range with logarithmic scale (1min → 30d)
+const MIN_MS = 60000;       // 1 minute
+const MAX_MS = 2592000000;  // 30 days
+function sliderToMs(val: number): number {
+    const log = Math.log(MIN_MS) + (val / 100) * (Math.log(MAX_MS) - Math.log(MIN_MS));
+    return Math.round(Math.exp(log));
+}
+function msToSlider(ms: number): number {
+    return ((Math.log(ms) - Math.log(MIN_MS)) / (Math.log(MAX_MS) - Math.log(MIN_MS))) * 100;
+}
 
 export function CreateVault() {
-    const { setupVault, isTransactionPending, accountId } = useNear();
-
+    const { setupVault, isTransactionPending, accountId, vaultStatus } = useNear();
     const [beneficiary, setBeneficiary] = useState("");
-    const [intervalMs, setIntervalMs] = useState(7 * 24 * 60 * 60_000); // Default 7 days
-    const [gracePeriodMs, setGracePeriodMs] = useState(24 * 60 * 60_000); // Default 24 hours
-    const [error, setError] = useState<string | null>(null);
+    const [intervalMs, setIntervalMs] = useState(86400000); // 24h default
+    const [graceMs, setGraceMs] = useState(86400000);       // 24h default
+    const [secretPayload, setSecretPayload] = useState("");
+    const [useCustomInterval, setUseCustomInterval] = useState(false);
+    const [useCustomGrace, setUseCustomGrace] = useState(false);
 
-    // Custom minute input states
-    const [showCustomInterval, setShowCustomInterval] = useState(false);
-    const [customIntervalMinutes, setCustomIntervalMinutes] = useState("");
-    const [showCustomGrace, setShowCustomGrace] = useState(false);
-    const [customGraceMinutes, setCustomGraceMinutes] = useState("");
-    const [securePayload, setSecurePayload] = useState("");
-    const [novaStatus, setNovaStatus] = useState<string | null>(null);
+    const telegramConnected = vaultStatus?.telegram_chat_id && vaultStatus.telegram_chat_id !== "";
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError(null);
+    const encryptAndSubmit = async () => {
+        if (!beneficiary.trim()) return;
 
-        // Validation
-        if (!beneficiary.trim()) {
-            setError("Beneficiary address is required");
-            return;
-        }
+        let encryptedPayload: string | undefined;
 
-        if (!beneficiary.endsWith(".testnet") && !beneficiary.endsWith(".near")) {
-            setError("Invalid NEAR address format (must end with .testnet or .near)");
-            return;
-        }
+        if (secretPayload.trim()) {
+            try {
+                const key = await crypto.subtle.generateKey(
+                    { name: "AES-GCM", length: 256 },
+                    true,
+                    ["encrypt", "decrypt"]
+                );
+                const iv = crypto.getRandomValues(new Uint8Array(12));
+                const encoded = new TextEncoder().encode(secretPayload);
+                const ciphertext = await crypto.subtle.encrypt(
+                    { name: "AES-GCM", iv },
+                    key,
+                    encoded
+                );
 
-        if (beneficiary === accountId) {
-            setError("Beneficiary cannot be the same as owner");
-            return;
-        }
+                const exportedKey = await crypto.subtle.exportKey("raw", key);
+                const keyB64 = btoa(String.fromCharCode(...new Uint8Array(exportedKey)));
+                const ivB64 = btoa(String.fromCharCode(...iv));
+                const cipherB64 = btoa(String.fromCharCode(...new Uint8Array(ciphertext)));
 
-        try {
-            let payloadToStore = securePayload || undefined;
-
-            // E2EE + NOVA upload flow
-            if (payloadToStore && isNovaConfigured()) {
-                // Step 1: Encrypt secret in the browser (server never sees plaintext)
-                setNovaStatus("🔐 Encrypting locally (AES-256-GCM)...");
-                const { ciphertext, key, iv } = await encryptSecret(payloadToStore);
-
-                // Step 2: Upload ONLY the ciphertext to NOVA (server sees garbage)
-                setNovaStatus("☁️ Uploading encrypted data to NOVA...");
-                try {
-                    const novaCidRaw = await uploadEncryptedData(ciphertext);
-                    if (novaCidRaw.startsWith("NOVA:")) {
-                        const cid = novaCidRaw.replace("NOVA:", "");
-                        // Step 3: Pack CID + key + IV into a single string for the contract
-                        payloadToStore = packE2EPayload(cid, key, iv);
-                        setNovaStatus("✅ E2EE Archived (Zero-Knowledge)");
-                    } else {
-                        setNovaStatus("⚠️ NOVA unavailable, storing encrypted locally");
-                    }
-                } catch {
-                    setNovaStatus("⚠️ NOVA unavailable, storing encrypted locally");
-                }
+                encryptedPayload = `E2E:LOCAL:${cipherB64}|KEY:${keyB64}|IV:${ivB64}`;
+            } catch (err) {
+                console.error("Encryption failed:", err);
+                return;
             }
-
-            await setupVault(beneficiary, intervalMs, gracePeriodMs, payloadToStore);
-            setNovaStatus(null);
-        } catch (err) {
-            console.error("Failed to create vault:", err);
-            setError(err instanceof Error ? err.message : "Failed to create vault");
-            setNovaStatus(null);
         }
+
+        await setupVault(
+            beneficiary.trim(),
+            intervalMs,
+            graceMs,
+            encryptedPayload
+        );
     };
 
     return (
-        <div className="min-h-[60vh] flex items-center justify-center p-4">
-            <Card className="w-full max-w-lg bg-slate-900/50 border-slate-700/50 backdrop-blur-sm">
-                <CardHeader className="text-center space-y-4">
-                    <div className="mx-auto w-16 h-16 bg-gradient-to-br from-emerald-500 to-cyan-500 rounded-2xl flex items-center justify-center">
-                        <Shield className="w-8 h-8 text-white" />
+        <div className="max-w-[680px] mx-auto px-6 py-14">
+            <div className="text-center mb-10 animate-reveal">
+                <h1 className="text-[28px] font-bold text-[var(--text)] mb-2">Configure KeepAlive</h1>
+                <p className="text-[15px] text-[var(--text-muted)]">Set the parameters for your automated inheritance vault.</p>
+            </div>
+
+            <div className="border border-[var(--border)] bg-[var(--surface)] animate-reveal delay-1">
+                {/* Beneficiary */}
+                <div className="p-7 border-b border-[var(--border)]">
+                    <label className="text-[11px] font-mono text-[var(--text-dim)] tracking-widest uppercase mb-3 flex items-center gap-1">
+                        <span className="text-[var(--accent)]">*</span> Beneficiary Address
+                    </label>
+                    <input
+                        type="text"
+                        value={beneficiary}
+                        onChange={e => setBeneficiary(e.target.value)}
+                        placeholder="receiver.near"
+                        className="w-full bg-[var(--bg)] border border-[var(--border)] px-4 py-3.5 text-[14px] font-mono text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--border-hover)]"
+                    />
+                </div>
+
+                {/* Heartbeat Interval */}
+                <div className="p-7 border-b border-[var(--border)]">
+                    <div className="flex items-center justify-between mb-3">
+                        <label className="text-[11px] font-mono text-[var(--text-dim)] tracking-widest uppercase flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5" /> Heartbeat Interval
+                        </label>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[14px] font-mono font-semibold text-[var(--text)]">{msToLabel(intervalMs)}</span>
+                            <button
+                                onClick={() => setUseCustomInterval(!useCustomInterval)}
+                                className={`text-[10px] font-mono px-2 py-0.5 border transition-colors ${useCustomInterval
+                                    ? "border-[var(--accent)]/30 text-[var(--accent)]"
+                                    : "border-[var(--border)] text-[var(--text-dim)] hover:text-[var(--text-muted)]"
+                                    }`}
+                            >
+                                {useCustomInterval ? "PRESETS" : "CUSTOM"}
+                            </button>
+                        </div>
                     </div>
-                    <div>
-                        <CardTitle className="text-2xl text-white">Create Your Vault</CardTitle>
-                        <CardDescription className="text-slate-400 mt-2">
-                            Set up a Dead Man&apos;s Switch to protect your assets
-                        </CardDescription>
+
+                    {useCustomInterval ? (
+                        <div>
+                            <input
+                                type="range"
+                                min={0}
+                                max={100}
+                                step={0.5}
+                                value={msToSlider(intervalMs)}
+                                onChange={e => setIntervalMs(sliderToMs(Number(e.target.value)))}
+                                className="w-full h-1 appearance-none cursor-pointer bg-[var(--border)] accent-[var(--accent)]"
+                                style={{
+                                    background: `linear-gradient(to right, var(--accent) ${msToSlider(intervalMs)}%, var(--border) ${msToSlider(intervalMs)}%)`
+                                }}
+                            />
+                            <div className="flex justify-between text-[9px] font-mono text-[var(--text-dim)] mt-1.5">
+                                <span>1 min</span>
+                                <span>30 days</span>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex border border-[var(--border)]">
+                            {PRESETS.interval.map((item, i) => (
+                                <button
+                                    key={i}
+                                    onClick={() => setIntervalMs(item.ms)}
+                                    className={`flex-1 py-2.5 text-[13px] font-mono transition-colors ${intervalMs === item.ms
+                                        ? "bg-[var(--text)] text-black font-semibold"
+                                        : "text-[var(--text-muted)] hover:text-[var(--text)]"
+                                        } ${i > 0 ? "border-l border-[var(--border)]" : ""}`}
+                                >
+                                    {item.label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Grace Period */}
+                <div className="p-7 border-b border-[var(--border)]">
+                    <div className="flex items-center justify-between mb-3">
+                        <label className="text-[11px] font-mono text-[var(--text-dim)] tracking-widest uppercase flex items-center gap-1.5">
+                            <Lock className="w-3.5 h-3.5" /> Grace Period
+                        </label>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[14px] font-mono font-semibold text-[var(--amber)]">{msToLabel(graceMs)}</span>
+                            <button
+                                onClick={() => setUseCustomGrace(!useCustomGrace)}
+                                className={`text-[10px] font-mono px-2 py-0.5 border transition-colors ${useCustomGrace
+                                    ? "border-[var(--amber)]/30 text-[var(--amber)]"
+                                    : "border-[var(--border)] text-[var(--text-dim)] hover:text-[var(--text-muted)]"
+                                    }`}
+                            >
+                                {useCustomGrace ? "PRESETS" : "CUSTOM"}
+                            </button>
+                        </div>
                     </div>
-                </CardHeader>
 
-                <CardContent>
-                    <form onSubmit={handleSubmit} className="space-y-6">
-                        {/* Beneficiary Input */}
-                        <div className="space-y-2">
-                            <Label htmlFor="beneficiary" className="text-slate-300 flex items-center gap-2">
-                                <User className="w-4 h-4" />
-                                Beneficiary Address
-                            </Label>
-                            <Input
-                                id="beneficiary"
-                                type="text"
-                                placeholder="friend.testnet"
-                                value={beneficiary}
-                                onChange={(e) => setBeneficiary(e.target.value)}
-                                className="bg-slate-800/50 border-slate-600 text-white placeholder:text-slate-500"
-                                disabled={isTransactionPending}
+                    {useCustomGrace ? (
+                        <div>
+                            <input
+                                type="range"
+                                min={0}
+                                max={100}
+                                step={0.5}
+                                value={msToSlider(graceMs)}
+                                onChange={e => setGraceMs(sliderToMs(Number(e.target.value)))}
+                                className="w-full h-1 appearance-none cursor-pointer bg-[var(--border)]"
+                                style={{
+                                    background: `linear-gradient(to right, var(--amber) ${msToSlider(graceMs)}%, var(--border) ${msToSlider(graceMs)}%)`
+                                }}
                             />
-                            <p className="text-xs text-slate-500">
-                                This address will receive your funds if you stop sending heartbeats
-                            </p>
+                            <div className="flex justify-between text-[9px] font-mono text-[var(--text-dim)] mt-1.5">
+                                <span>1 min</span>
+                                <span>30 days</span>
+                            </div>
                         </div>
-
-                        {/* Heartbeat Interval */}
-                        <div className="space-y-2">
-                            <Label className="text-slate-300 flex items-center gap-2">
-                                <Clock className="w-4 h-4" />
-                                Heartbeat Interval
-                            </Label>
-                            <div className="grid grid-cols-2 gap-2">
-                                {INTERVAL_PRESETS.map((preset) => (
-                                    <button
-                                        key={preset.value}
-                                        type="button"
-                                        onClick={() => {
-                                            setIntervalMs(preset.value);
-                                            setShowCustomInterval(false);
-                                            setCustomIntervalMinutes("");
-                                        }}
-                                        className={`p-2 text-sm rounded-lg border transition-all ${intervalMs === preset.value && !showCustomInterval
-                                            ? "bg-emerald-500/20 border-emerald-500 text-emerald-400"
-                                            : "bg-slate-800/50 border-slate-600 text-slate-400 hover:border-slate-500"
-                                            }`}
-                                        disabled={isTransactionPending}
-                                    >
-                                        {preset.label}
-                                    </button>
-                                ))}
+                    ) : (
+                        <div className="flex border border-[var(--border)]">
+                            {PRESETS.grace.map((item, i) => (
                                 <button
-                                    type="button"
-                                    onClick={() => setShowCustomInterval(!showCustomInterval)}
-                                    className={`p-2 text-sm rounded-lg border transition-all ${showCustomInterval
-                                        ? "bg-cyan-500/20 border-cyan-500 text-cyan-400"
-                                        : "bg-slate-800/50 border-slate-600 text-slate-400 hover:border-slate-500"
-                                        }`}
-                                    disabled={isTransactionPending}
+                                    key={i}
+                                    onClick={() => setGraceMs(item.ms)}
+                                    className={`flex-1 py-2.5 text-[13px] font-mono transition-colors ${graceMs === item.ms
+                                        ? "bg-[var(--amber)] text-white font-semibold"
+                                        : "text-[var(--text-muted)] hover:text-[var(--text)]"
+                                        } ${i > 0 ? "border-l border-[var(--border)]" : ""}`}
                                 >
-                                    Custom ⚙️
+                                    {item.label}
                                 </button>
-                            </div>
-                            {showCustomInterval && (
-                                <div className="flex gap-2 items-center mt-2">
-                                    <Input
-                                        type="number"
-                                        min="1"
-                                        placeholder="Minutes"
-                                        value={customIntervalMinutes}
-                                        onChange={(e) => {
-                                            setCustomIntervalMinutes(e.target.value);
-                                            const minutes = parseInt(e.target.value);
-                                            if (minutes > 0) {
-                                                setIntervalMs(minutes * 60_000);
-                                            }
-                                        }}
-                                        className="bg-slate-800/50 border-slate-600 text-white placeholder:text-slate-500"
-                                        disabled={isTransactionPending}
-                                    />
-                                    <span className="text-slate-400 text-sm whitespace-nowrap">minutes</span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Encrypted Payload */}
+                <div className="p-7 border-b border-[var(--border)]">
+                    <div className="flex items-center justify-between mb-3">
+                        <label className="text-[11px] font-mono text-[var(--text-dim)] tracking-widest uppercase flex items-center gap-1.5">
+                            <Lock className="w-3.5 h-3.5" /> Encrypted Payload
+                        </label>
+                        <span className="text-[9px] font-mono px-1.5 py-0.5 border border-[var(--accent)]/20 text-[var(--accent)]">
+                            AES-256-GCM
+                        </span>
+                    </div>
+                    <textarea
+                        value={secretPayload}
+                        onChange={e => setSecretPayload(e.target.value)}
+                        rows={3}
+                        placeholder="Enter seed phrases, private notes, or coordinates here. Encrypted locally before it ever leaves your browser."
+                        className="w-full bg-[var(--bg)] border border-[var(--border)] px-4 py-3.5 text-[13px] font-mono text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--border-hover)] resize-none"
+                    />
+                </div>
+
+                {/* Telegram Connect */}
+                <div className="p-7 border-b border-[var(--border)]">
+                    <label className="text-[11px] font-mono text-[var(--text-dim)] tracking-widest uppercase mb-3 block">
+                        Telegram Notifications (optional)
+                    </label>
+                    {telegramConnected ? (
+                        <div className="flex items-center justify-between p-4 border border-[var(--accent)]/20 bg-[var(--accent-dim)]">
+                            <div className="flex items-center gap-2.5">
+                                <Check className="w-4 h-4 text-[var(--accent)]" />
+                                <div>
+                                    <p className="text-[13px] font-medium text-[var(--text)]">Telegram Connected</p>
+                                    <p className="text-[11px] text-[var(--text-dim)]">You&#39;ll receive alerts when your timer expires.</p>
                                 </div>
-                            )}
-                            <p className="text-xs text-slate-500">
-                                How often you need to send a heartbeat to keep your vault safe
-                            </p>
-                        </div>
-
-                        {/* Grace Period */}
-                        <div className="space-y-2">
-                            <Label className="text-slate-300 flex items-center gap-2">
-                                <Zap className="w-4 h-4" />
-                                Warning Grace Period
-                            </Label>
-                            <div className="grid grid-cols-2 gap-2">
-                                {GRACE_PERIOD_PRESETS.map((preset) => (
-                                    <button
-                                        key={preset.value}
-                                        type="button"
-                                        onClick={() => {
-                                            setGracePeriodMs(preset.value);
-                                            setShowCustomGrace(false);
-                                            setCustomGraceMinutes("");
-                                        }}
-                                        className={`p-2 text-sm rounded-lg border transition-all ${gracePeriodMs === preset.value && !showCustomGrace
-                                            ? "bg-amber-500/20 border-amber-500 text-amber-400"
-                                            : "bg-slate-800/50 border-slate-600 text-slate-400 hover:border-slate-500"
-                                            }`}
-                                        disabled={isTransactionPending}
-                                    >
-                                        {preset.label}
-                                    </button>
-                                ))}
-                                <button
-                                    type="button"
-                                    onClick={() => setShowCustomGrace(!showCustomGrace)}
-                                    className={`p-2 text-sm rounded-lg border transition-all ${showCustomGrace
-                                        ? "bg-cyan-500/20 border-cyan-500 text-cyan-400"
-                                        : "bg-slate-800/50 border-slate-600 text-slate-400 hover:border-slate-500"
-                                        }`}
-                                    disabled={isTransactionPending}
-                                >
-                                    Custom ⚙️
-                                </button>
                             </div>
-                            {showCustomGrace && (
-                                <div className="flex gap-2 items-center mt-2">
-                                    <Input
-                                        type="number"
-                                        min="1"
-                                        placeholder="Minutes"
-                                        value={customGraceMinutes}
-                                        onChange={(e) => {
-                                            setCustomGraceMinutes(e.target.value);
-                                            const minutes = parseInt(e.target.value);
-                                            if (minutes > 0) {
-                                                setGracePeriodMs(minutes * 60_000);
-                                            }
-                                        }}
-                                        className="bg-slate-800/50 border-slate-600 text-white placeholder:text-slate-500"
-                                        disabled={isTransactionPending}
-                                    />
-                                    <span className="text-slate-400 text-sm whitespace-nowrap">minutes</span>
-                                </div>
-                            )}
-                            <p className="text-xs text-slate-500">
-                                Time you have to respond after warning is triggered
-                            </p>
+                            <a
+                                href={`https://t.me/keepalive_near_bot?start=${accountId}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[11px] font-mono text-[var(--text-dim)] hover:text-[var(--text)] transition-colors flex items-center gap-1"
+                            >
+                                Open Bot <ExternalLink className="w-3 h-3" />
+                            </a>
                         </div>
-
-                        {/* Secure Payload (NOVA) */}
-                        <div className="space-y-2">
-                            <Label htmlFor="securePayload" className="text-slate-300 flex items-center gap-2">
-                                <Lock className="w-4 h-4" />
-                                Secret Message (Optional)
-                            </Label>
-                            <textarea
-                                id="securePayload"
-                                placeholder="Enter seed phrase, private key, or any secret to pass on..."
-                                value={securePayload}
-                                onChange={(e) => setSecurePayload(e.target.value)}
-                                className="w-full min-h-[80px] px-3 py-2 rounded-md bg-slate-800/50 border border-slate-600 text-white placeholder:text-slate-500 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
-                                disabled={isTransactionPending}
-                            />
-                            <p className="text-xs text-slate-500">
-                                🔐 This secret will only be revealed to your beneficiary after the vault triggers (Dead Man&apos;s Switch)
-                            </p>
-                            {isNovaConfigured() && securePayload && (
-                                <p className="text-xs text-purple-400 flex items-center gap-1">
-                                    <Cloud className="w-3 h-3" />
-                                    Will be archived to NOVA decentralized storage (IPFS)
-                                </p>
-                            )}
-                        </div>
-
-                        {/* NOVA Upload Status */}
-                        {novaStatus && (
-                            <div className="flex items-center gap-2 p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg text-purple-300 text-sm">
-                                {novaStatus.startsWith("✅") ? null : <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />}
-                                {novaStatus}
-                            </div>
-                        )}
-
-                        {/* Error Message */}
-                        {error && (
-                            <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
-                                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                                {error}
-                            </div>
-                        )}
-
-                        {/* Submit Button */}
-                        <Button
-                            type="submit"
-                            disabled={isTransactionPending || !beneficiary}
-                            className="w-full h-12 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-white font-semibold"
+                    ) : (
+                        <a
+                            href={`https://t.me/keepalive_near_bot?start=${accountId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-between p-4 border border-[var(--border)] hover:border-[var(--border-hover)] transition-colors group"
                         >
-                            {isTransactionPending ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                    Creating Vault...
-                                </>
-                            ) : (
-                                <>
-                                    <Shield className="w-4 h-4 mr-2" />
-                                    Initialize Vault
-                                </>
-                            )}
-                        </Button>
+                            <div className="flex items-center gap-2.5">
+                                <span className="text-[16px]">📱</span>
+                                <div>
+                                    <p className="text-[13px] font-medium text-[var(--text)]">Connect Telegram Bot</p>
+                                    <p className="text-[11px] text-[var(--text-dim)]">Receive instant alerts when your vault timer is running low.</p>
+                                </div>
+                            </div>
+                            <ExternalLink className="w-4 h-4 text-[var(--text-dim)] group-hover:text-[var(--text-muted)] transition-colors" />
+                        </a>
+                    )}
+                </div>
 
-                        {/* Info Box */}
-                        <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700/50">
-                            <h4 className="text-sm font-medium text-slate-300 mb-2">How it works:</h4>
-                            <ol className="text-xs text-slate-400 space-y-1 list-decimal list-inside">
-                                <li>Create your vault and deposit NEAR tokens</li>
-                                <li>Send periodic heartbeats to prove you&apos;re active</li>
-                                <li>If you miss a heartbeat, a warning is triggered</li>
-                                <li>After the grace period, funds transfer to beneficiary</li>
-                            </ol>
-                        </div>
-                    </form>
-                </CardContent>
-            </Card>
+                {/* Submit */}
+                <div className="p-7">
+                    <button
+                        onClick={encryptAndSubmit}
+                        disabled={!beneficiary.trim() || isTransactionPending}
+                        className="w-full py-4 bg-[var(--text)] text-black text-[15px] font-semibold hover:opacity-90 transition-opacity disabled:opacity-30 flex items-center justify-center gap-2"
+                    >
+                        {isTransactionPending ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <>Initialize Vault</>
+                        )}
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }

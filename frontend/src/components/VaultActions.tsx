@@ -170,7 +170,7 @@ export function VaultActions() {
                             className="bg-black/30 border-slate-700 text-white placeholder:text-slate-500"
                         />
                         <p className="text-xs text-slate-500">
-                            This account will receive your funds if the dead man&apos;s switch triggers.
+                            This account will receive your funds if the KeepAlive protocol triggers.
                         </p>
                     </div>
 
@@ -210,7 +210,7 @@ export function VaultActions() {
                         </div>
                         <p className="text-xs text-slate-500">
                             {intervalUnit === "minutes"
-                                ? "⚡ Demo mode: Quick testing with minute intervals (min: 1 minute)"
+                                ? "⚡ High-frequency mode: Quick testing with minute intervals (min: 1 minute)"
                                 : "You must ping at least once within this period to keep the vault active."}
                         </p>
                     </div>
@@ -407,7 +407,7 @@ export function VaultActions() {
                             </div>
                         </div>
                         <p className="text-xs text-slate-500">
-                            Deposit NEAR into your vault. These funds will be protected by the dead man&apos;s switch.
+                            Deposit NEAR into your vault. These funds will be protected by the inheritance protocol.
                         </p>
                     </TabsContent>
 
@@ -543,9 +543,9 @@ export function VaultActions() {
                                             className="flex-1 h-10 px-3 rounded-md bg-black/30 border border-slate-700 text-white text-sm"
                                         >
                                             <option value="">Select period...</option>
-                                            <option value="60000">1 Minute (Demo)</option>
-                                            <option value="120000">2 Minutes (Demo)</option>
-                                            <option value="300000">5 Minutes (Demo)</option>
+                                            <option value="60000">1 Minute</option>
+                                            <option value="120000">2 Minutes</option>
+                                            <option value="300000">5 Minutes</option>
                                             <option value="3600000">1 Hour</option>
                                             <option value="43200000">12 Hours</option>
                                             <option value="86400000">24 Hours (Default)</option>
@@ -583,7 +583,7 @@ export function VaultActions() {
                                                     </p>
                                                 </div>
                                                 <a
-                                                    href={`https://t.me/sentinel_near_bot?start=${accountId}`}
+                                                    href={`https://t.me/keepalive_near_bot?start=${accountId}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="inline-flex items-center text-sm text-slate-400 hover:text-emerald-400 transition-colors"
@@ -607,7 +607,7 @@ export function VaultActions() {
                                                     </p>
                                                 </div>
                                                 <a
-                                                    href={`https://t.me/sentinel_near_bot?start=${accountId}`}
+                                                    href={`https://t.me/keepalive_near_bot?start=${accountId}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="inline-flex items-center justify-center w-full h-10 px-4 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition-colors"

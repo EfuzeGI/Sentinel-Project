@@ -490,14 +490,14 @@ function initTelegramBot() {
             const wallets = subscribers[chatId] || [];
 
             bot.sendMessage(msg.chat.id,
-                '👋 *Welcome to Sentinel!*\n\n' +
-                '🛡️ Dead Man\'s Switch for NEAR Protocol\n\n' +
+                '👋 *Welcome to KeepAlive!*\n\n' +
+                '🛡️ Automated Inheritance for NEAR Protocol\n\n' +
                 '*Commands:*\n' +
                 '• /status - View your watchlist\n' +
                 '• /unlink `<wallet>` - Remove a wallet\n' +
                 '• /clear - Remove all wallets\n\n' +
                 `📊 Currently watching: *${wallets.length} wallet(s)*\n\n` +
-                '👉 [Open Dashboard](https://keep-alive-protocol.netlify.app)',
+                '👉 [Open Dashboard](https://keepalive-fdn.netlify.app)',
                 { parse_mode: 'Markdown' }
             );
             return;
