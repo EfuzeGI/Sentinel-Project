@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useNear } from "@/contexts/NearContext";
-import { Lock, Clock, Loader2, ExternalLink, Check } from "lucide-react";
+import { Shield, Clock, Key, Users, AlertTriangle, Info, Check, Brain, Wallet, Lock, Loader2, ExternalLink } from "lucide-react";
+import { encryptSecret, packE2EPayload } from "@/utils/encryption";
+import { uploadEncryptedData } from "@/utils/nova";
 
 const PRESETS = {
     interval: [
@@ -51,8 +53,7 @@ export function CreateVault() {
 
     const telegramConnected = vaultStatus?.telegram_chat_id && vaultStatus.telegram_chat_id !== "";
 
-    import { encryptSecret, packE2EPayload } from "@/utils/encryption";
-    import { uploadEncryptedData } from "@/utils/nova";
+
 
     const encryptAndSubmit = async () => {
         if (!beneficiary.trim()) return;
