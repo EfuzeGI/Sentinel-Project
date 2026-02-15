@@ -23,6 +23,8 @@ export default function Home() {
       const detail = (e as CustomEvent).detail;
       if (detail === "dashboard") {
         setActiveTab(hasVault ? "dashboard" : "create");
+      } else if (detail === "architecture") {
+        setActiveTab("architecture");
       }
     };
     window.addEventListener("sentinel:navigate", handler);

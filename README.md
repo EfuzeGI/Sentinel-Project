@@ -4,7 +4,6 @@
 
 KeepAlive is a decentralized protocol that ensures your crypto assets are securely transferred to a designated beneficiary if you ever become inactive. It acts as an on-chain automated inheritance system, protecting your digital legacy without intermediaries, custodians, or trust.
 
-![Dashboard Preview](https://keepalive-fdn.netlify.app/og-image.png)
 
 ## Core Features
 
