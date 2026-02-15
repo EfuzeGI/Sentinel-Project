@@ -112,7 +112,43 @@ export function unpackE2EPayload(payload: string): {
 
     if (!cidPart || !keyPart || !ivPart) return null;
 
+    if (!cidPart || !keyPart || !ivPart) return null;
+
     return { cid: cidPart, key: keyPart, iv: ivPart };
+}
+
+/**
+ * Pack the encrypted secret + metadata into a single string
+ * for storage in the smart contract's secure_payload field.
+ *
+ * Format: "E2E:LOCAL:<ciphertext>|KEY:<key>|IV:<iv>"
+ * The "E2E:LOCAL:" prefix signals that the data is stored directly in the contract.
+ */
+export function packE2ELocalPayload(ciphertext: string, key: string, iv: string): string {
+    return `E2E:LOCAL:${ciphertext}|KEY:${key}|IV:${iv}`;
+}
+
+/**
+ * Unpack an E2E:LOCAL payload string back into its components.
+ * Returns null if the payload is not in E2E:LOCAL format.
+ */
+export function unpackE2ELocalPayload(payload: string): {
+    ciphertext: string;
+    key: string;
+    iv: string;
+} | null {
+    if (!payload.startsWith("E2E:LOCAL:")) return null;
+
+    const stripped = payload.replace("E2E:LOCAL:", "");
+    const parts = stripped.split("|");
+
+    const ciphertextPart = parts[0]; // raw ciphertext (no prefix)
+    const keyPart = parts.find(p => p.startsWith("KEY:"))?.replace("KEY:", "");
+    const ivPart = parts.find(p => p.startsWith("IV:"))?.replace("IV:", "");
+
+    if (!ciphertextPart || !keyPart || !ivPart) return null;
+
+    return { ciphertext: ciphertextPart, key: keyPart, iv: ivPart };
 }
 
 // ─── Helper functions ───

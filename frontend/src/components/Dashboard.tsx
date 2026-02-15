@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNear } from "@/contexts/NearContext";
 import { Activity, ChevronRight, Copy, Eye, Clock, Shield, Users, Loader2, RotateCcw, RefreshCw, Trash2, ExternalLink } from "lucide-react";
+import { decryptSecret, unpackE2ELocalPayload, unpackE2EPayload } from "@/utils/encryption";
+import { retrieveEncryptedData } from "@/utils/nova";
 
 export function Dashboard() {
     const {
@@ -15,6 +17,7 @@ export function Dashboard() {
         resetVault,
         isTransactionPending,
         refreshStatus,
+        isSyncing,
     } = useNear();
 
     const [hours, setHours] = useState("00");
@@ -26,6 +29,14 @@ export function Dashboard() {
     const [showSecret, setShowSecret] = useState(false);
     const [secretLoading, setSecretLoading] = useState(false);
     const [copied, setCopied] = useState(false);
+
+    // Track if we've triggered an auto-refresh for the current zero-state
+    const hasRefreshedRef = useRef(false);
+
+    // Reset auto-refresh flag when vault status updates (new cycle)
+    useEffect(() => {
+        hasRefreshedRef.current = false;
+    }, [vaultStatus]);
 
     // Timer countdown
     useEffect(() => {
@@ -55,12 +66,22 @@ export function Dashboard() {
             setMinutes(String(m).padStart(2, "0"));
             setSeconds(String(s).padStart(2, "0"));
             setProgress(total > 0 ? Math.min(100, ((total - ms) / total) * 100) : 0);
+
+            // Active or Warning states imply a countdown. Other states (Expired, Yielding) are terminal/static.
+            const isTimerRunning = !vaultStatus.is_expired && !vaultStatus.is_yielding && !vaultStatus.is_emergency && !vaultStatus.is_completed;
+
+            // Auto-refresh when timer hits zero to transition state
+            if (ms <= 0 && isTimerRunning && !hasRefreshedRef.current && !isSyncing) {
+                console.log("Timer hit zero - auto-refreshing status...");
+                hasRefreshedRef.current = true;
+                refreshStatus();
+            }
         };
 
         tick();
         const interval = setInterval(tick, 1000);
         return () => clearInterval(interval);
-    }, [vaultStatus]);
+    }, [vaultStatus, refreshStatus, isSyncing]);
 
     const formatNear = (yocto: string) => {
         const n = Number(BigInt(yocto || "0")) / 1e24;
@@ -91,7 +112,38 @@ export function Dashboard() {
             ]) as string | null;
 
             if (payload) {
-                setRevealedSecret(payload);
+                // 1. Try Local Payload (On-Chain)
+                const localPack = unpackE2ELocalPayload(payload);
+                if (localPack) {
+                    try {
+                        const decrypted = await decryptSecret(localPack.ciphertext, localPack.key, localPack.iv);
+                        setRevealedSecret(decrypted);
+                    } catch (e) {
+                        console.error("Local decryption failed:", e);
+                        setRevealedSecret(payload);
+                        setRevealError("Decryption failed. Showing raw payload.");
+                    }
+                }
+                // 2. Try Nova Payload (IPFS)
+                else {
+                    const novaPack = unpackE2EPayload(payload);
+                    if (novaPack) {
+                        try {
+                            // Fetch ciphertext from Nova/IPFS
+                            const ciphertext = await retrieveEncryptedData(`NOVA:${novaPack.cid}`);
+                            // Decrypt
+                            const decrypted = await decryptSecret(ciphertext, novaPack.key, novaPack.iv);
+                            setRevealedSecret(decrypted);
+                        } catch (e) {
+                            console.error("Nova retrieval/decryption failed:", e);
+                            setRevealedSecret(payload);
+                            setRevealError("Failed to retrieve from Nova/IPFS.");
+                        }
+                    } else {
+                        // 3. Raw/Unknown format
+                        setRevealedSecret(payload);
+                    }
+                }
                 setShowSecret(true);
             } else {
                 // If null is returned without error (e.g. redirect wallet), we might not reach here due to reload
@@ -149,12 +201,12 @@ export function Dashboard() {
                 <div className="flex items-center gap-2">
                     <button
                         onClick={() => refreshStatus()}
-                        disabled={isTransactionPending}
+                        disabled={isTransactionPending || isSyncing}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-mono text-[var(--text-dim)] hover:text-[var(--text-muted)] border border-[var(--border)] hover:border-[var(--border-hover)] transition-colors disabled:opacity-30"
                         title="Refresh vault state"
                     >
-                        <RefreshCw className="w-3 h-3" />
-                        Refresh
+                        <RefreshCw className={`w-3 h-3 ${isSyncing ? "animate-spin" : ""}`} />
+                        {isSyncing ? "Syncing..." : "Refresh"}
                     </button>
                     <button
                         onClick={() => resetVault()}

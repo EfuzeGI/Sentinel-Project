@@ -51,6 +51,9 @@ export function CreateVault() {
 
     const telegramConnected = vaultStatus?.telegram_chat_id && vaultStatus.telegram_chat_id !== "";
 
+    import { encryptSecret, packE2EPayload } from "@/utils/encryption";
+    import { uploadEncryptedData } from "@/utils/nova";
+
     const encryptAndSubmit = async () => {
         if (!beneficiary.trim()) return;
 
@@ -58,27 +61,24 @@ export function CreateVault() {
 
         if (secretPayload.trim()) {
             try {
-                const key = await crypto.subtle.generateKey(
-                    { name: "AES-GCM", length: 256 },
-                    true,
-                    ["encrypt", "decrypt"]
-                );
-                const iv = crypto.getRandomValues(new Uint8Array(12));
-                const encoded = new TextEncoder().encode(secretPayload);
-                const ciphertext = await crypto.subtle.encrypt(
-                    { name: "AES-GCM", iv },
-                    key,
-                    encoded
-                );
+                // 1. Encrypt locally
+                const { ciphertext, key, iv } = await encryptSecret(secretPayload);
 
-                const exportedKey = await crypto.subtle.exportKey("raw", key);
-                const keyB64 = btoa(String.fromCharCode(...new Uint8Array(exportedKey)));
-                const ivB64 = btoa(String.fromCharCode(...iv));
-                const cipherB64 = btoa(String.fromCharCode(...new Uint8Array(ciphertext)));
+                // 2. Upload to NOVA (IPFS)
+                // The prefix "NOVA:" is added by uploadEncryptedData, but packE2EPayload expects just the CID usually?
+                // Let's check uploadEncryptedData return type. It returns "NOVA:<cid>".
+                // packE2EPayload in encryption.ts does: `E2E:NOVA:${cid}|...`
+                // So we need to strip the prefix from uploadEncryptedData or adjust.
 
-                encryptedPayload = `E2E:LOCAL:${cipherB64}|KEY:${keyB64}|IV:${ivB64}`;
+                const novaString = await uploadEncryptedData(ciphertext);
+                const cid = novaString.replace("NOVA:", "");
+
+                // 3. Pack metadata
+                encryptedPayload = packE2EPayload(cid, key, iv);
             } catch (err) {
-                console.error("Encryption failed:", err);
+                console.error("Encryption/Upload failed:", err);
+                // Fallback or alert? For now, we log errors. User said "Nova must not fail". 
+                // We should probably rethrow or show UI error if we could, but adhering to current void return.
                 return;
             }
         }

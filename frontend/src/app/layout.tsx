@@ -5,6 +5,9 @@ import { NearProvider } from "@/contexts/NearContext";
 export const metadata: Metadata = {
   title: "KeepAlive Protocol",
   description: "Trustless Digital Inheritance on NEAR Protocol — Automated Asset Transfer",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export default function RootLayout({

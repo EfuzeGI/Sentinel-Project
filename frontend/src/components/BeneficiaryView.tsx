@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useNear } from "@/contexts/NearContext";
 import { Loader2, Eye, Copy, Check } from "lucide-react";
+import { decryptSecret, unpackE2ELocalPayload, unpackE2EPayload } from "@/utils/encryption";
+import { retrieveEncryptedData } from "@/utils/nova";
 
 export function BeneficiaryView() {
     const { revealPayload, isTransactionPending, accountId } = useNear();
@@ -20,7 +22,36 @@ export function BeneficiaryView() {
             const targetAccount = ownerInput.trim() || undefined;
             const payload = await revealPayload(targetAccount);
             if (payload) {
-                setResult(payload);
+                // 1. Try Local Payload
+                const localPack = unpackE2ELocalPayload(payload);
+                if (localPack) {
+                    try {
+                        const decrypted = await decryptSecret(localPack.ciphertext, localPack.key, localPack.iv);
+                        setResult(decrypted);
+                    } catch (e) {
+                        console.error("Local decryption failed:", e);
+                        setResult(payload);
+                        setError("Decryption failed. Showing raw payload.");
+                    }
+                }
+                // 2. Try Nova Payload
+                else {
+                    const novaPack = unpackE2EPayload(payload);
+                    if (novaPack) {
+                        try {
+                            const ciphertext = await retrieveEncryptedData(`NOVA:${novaPack.cid}`);
+                            const decrypted = await decryptSecret(ciphertext, novaPack.key, novaPack.iv);
+                            setResult(decrypted);
+                        } catch (e) {
+                            console.error("Nova retrieval/decryption failed:", e);
+                            setResult(payload);
+                            setError("Failed to retrieve from Nova/IPFS.");
+                        }
+                    } else {
+                        // 3. Raw
+                        setResult(payload);
+                    }
+                }
             } else {
                 setError("No payload found for this vault, or the vault has not triggered yet.");
             }
@@ -53,13 +84,13 @@ export function BeneficiaryView() {
             <div className="border border-[var(--border)] bg-[var(--surface)] animate-reveal delay-1">
                 <div className="p-6">
                     <label className="text-[10px] font-mono text-[var(--text-dim)] tracking-widest uppercase mb-2 block">
-                        Owner Account ID
+                        Vault Creator Account ID
                     </label>
                     <input
                         type="text"
                         value={ownerInput}
                         onChange={e => setOwnerInput(e.target.value)}
-                        placeholder={accountId || "owner.near"}
+                        placeholder="e.g. vault-owner.near"
                         className="w-full bg-[var(--bg)] border border-[var(--border)] px-4 py-3 text-[13px] font-mono text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--border-hover)]"
                     />
                 </div>
