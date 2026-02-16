@@ -435,8 +435,26 @@ function startHttpApi() {
                     }
 
                     const isNew = registerVault(wallet_id);
+
+                    // FORCE CHECK IMMEDIATE: Even if already registered, force a check now
+                    // We need access to RPC. Since startHttpApi is called from main where rpc exists,
+                    // we should pass rpc to startHttpApi or make rpc global.
+                    // For minimal diff, let's assume we can access the global instance or we'll hotfix the architecture.
+                    // Actually, let's emit an event or just do it if we restructure. 
+                    // EASIER: Just respond 200, and let the loop handle it? No, user wants infinite loading fixed.
+                    // Let's rely on the loop for now but decrease poll interval? 
+                    // No, let's adding a specific "force_check" flag or similar.
+
+                    // BETTER FIX: Make rpc global or pass it.
+                    // I will change startHttpApi signature to accept rpc.
+
+                    if (global.sharedRpc) {
+                        // Fire and forget - don't block response
+                        processVault(global.sharedRpc, wallet_id).catch(err => log(`Immediate check failed: ${err.message}`, C.red));
+                    }
+
                     res.writeHead(200, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ success: true, registered: isNew, wallet_id }));
+                    res.end(JSON.stringify({ success: true, registered: isNew, wallet_id, message: "Monitoring active. Initial check triggered." }));
                 } catch (e) {
                     res.writeHead(400, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ error: 'Invalid JSON' }));
@@ -1095,6 +1113,9 @@ async function main() {
     const rpc = new Rpc();
     await rpc.init();
     await rpc.connect();
+
+    // Expose RPC for HTTP API immediate triggers
+    global.sharedRpc = rpc;
 
     // Initialize Telegram bot for deep linking
     initTelegramBot();

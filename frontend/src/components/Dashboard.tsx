@@ -138,20 +138,25 @@ export function Dashboard() {
         return () => clearInterval(id);
     }, [accountId]);
 
-    const handleRegister = async () => {
+    const checkAgentStatus = async () => {
         if (!accountId) return;
         setIsRegistering(true);
         try {
+            // Force re-registration / check
             const res = await fetch("/api/agent/register-vault", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ wallet_id: accountId }),
             });
+
             if (res.ok) {
+                // Determine if monitored based on response (or just assume true if success)
                 setIsMonitored(true);
+                // Also trigger a status refresh from contract in case agent acted immediately
+                refreshStatus();
             }
         } catch (e) {
-            console.error("Manual registration failed");
+            console.error("Agent check failed", e);
         } finally {
             setIsRegistering(false);
         }
@@ -439,17 +444,34 @@ export function Dashboard() {
                             {
                                 icon: ShieldAlert,
                                 label: "Monitoring Agent",
-                                value: isMonitored === null ? "..." : isMonitored ? "Active" : "Inactive",
-                                color: isMonitored ? "var(--accent)" : "var(--warn)",
-                                action: !isMonitored && isMonitored !== null ? (
-                                    <button
-                                        onClick={handleRegister}
-                                        disabled={isRegistering}
-                                        className="text-[10px] underline ml-2 hover:text-[var(--text)] transition-colors"
-                                    >
-                                        {isRegistering ? "..." : "Activate"}
-                                    </button>
-                                ) : null
+                                value: (
+                                    <div className="flex items-center gap-2">
+                                        <div className={`w-1.5 h-1.5 rounded-full ${isMonitored ? "bg-[var(--success)] shadow-[0_0_8px_var(--success)]" : "bg-[var(--text-dim)]"}`} />
+                                        <span className={`text-[11px] font-mono ${isMonitored ? "text-[var(--text)]" : "text-[var(--text-dim)]"}`}>
+                                            {isMonitored ? "Active" : "Inactive"}
+                                        </span>
+                                        {!isMonitored && (
+                                            <button
+                                                onClick={checkAgentStatus}
+                                                disabled={isRegistering}
+                                                className="ml-2 px-2 py-0.5 text-[9px] bg-[var(--surface-light)] hover:bg-[var(--surface-lighter)] text-[var(--text-dim)] hover:text-[var(--text)] rounded border border-[var(--border)] transition-colors"
+                                            >
+                                                {isRegistering ? "..." : "Activate"}
+                                            </button>
+                                        )}
+                                        {isMonitored && (
+                                            <button
+                                                onClick={checkAgentStatus}
+                                                disabled={isRegistering}
+                                                title="Force agent check"
+                                                className="ml-1 text-[var(--text-dim)] hover:text-[var(--accent)] transition-colors"
+                                            >
+                                                <RefreshCw className={`w-3 h-3 ${isRegistering ? "animate-spin" : ""}`} />
+                                            </button>
+                                        )}
+                                    </div>
+                                ),
+                                color: "var(--text)" // This color property is now effectively overridden by the JSX in 'value'
                             },
                         ].map((item, i) => (
                             <div key={i} className={`flex items-center justify-between px-6 py-4 ${i > 0 ? "border-t border-[var(--border)]" : ""}`}>
